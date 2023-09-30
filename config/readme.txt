@@ -1,0 +1,1 @@
+This is where Guild Specific Config Files are stored
