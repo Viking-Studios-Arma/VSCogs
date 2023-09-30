@@ -36,6 +36,7 @@ class VSMod(commands.Cog):
             self.kicks[guild_id] = self.load_data_for_guild(guild_id, "kicks")
             self.banned_words[guild_id] = self.load_data_for_guild(guild_id, "banned_words")
             self.thresholds[guild_id] = self.load_data_for_guild(guild_id, "thresholds")
+            
     def load_data_for_guild(self, guild_id, data_name):
         file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_{data_name}.json')
         try:
@@ -47,12 +48,12 @@ class VSMod(commands.Cog):
             print(f"Data file not found for guild {guild_id}, data_name {data_name}")
             # Create an empty data file if it doesn't exist
             with open(file_path, 'w') as file:
-                json.dump({}, file)
-            return {}
+                json.dump([], file)  # Initialize as an empty list
+            return []
 
     def save_data(self, guild_id, data_name):
         file_path = os.path.join(self.data_path, f'guild_{guild_id}_{data_name}.json')
-        data = getattr(self, data_name).get(guild_id, {})
+        data = getattr(self, data_name).get(guild_id, [])
 
         with open(file_path, 'w') as file:
             json.dump(data, file)
@@ -81,6 +82,44 @@ class VSMod(commands.Cog):
         file_path = os.path.join(self.data_path, f'{data_name}.json')
         with open(file_path, 'w') as file:
             json.dump(data, file)
+
+    def load_warnings_for_guild(self, guild_id):
+        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_warnings.json')
+        try:
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {}
+
+    def load_banned_words_for_guild(self, guild_id):
+        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_banned_words.json')
+        try:
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return []  # Change this line to return an empty list
+
+    def load_offenses(self):
+        self.offenses = {}
+
+        for guild in self.bot.guilds:
+            guild_id = guild.id
+
+            self.offenses[guild_id] = self.load_offenses_for_guild(guild_id)
+
+    def load_offenses_for_guild(self, guild_id):
+        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_offenses.json')
+        try:
+            with open(file_path, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {}
+
+    def save_offenses(self, guild_id):
+        self.create_data_file(guild_id, "offenses")
+        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_offenses.json')
+        with open(file_path, 'w') as file:
+            json.dump(self.offenses.get(guild_id, {}), file)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -116,12 +155,12 @@ class VSMod(commands.Cog):
         await message.delete()
         await message.channel.send(f"{message.author.mention}, your message has been deleted for containing a banned word. Please refrain from using such language.")
 
-        if offenses >= ban_threshold:
+        if offenses == ban_threshold:
             member = message.author
             await message.guild.ban(member, reason="Repeated offenses", delete_message_days=0)
             return f"{member.mention} has been banned for repeated offenses."
 
-        if offenses >= mute_threshold:
+        if offenses == mute_threshold:
             member = message.author
             muted_role = discord.utils.get(message.guild.roles, name='Muted')
 
@@ -138,7 +177,7 @@ class VSMod(commands.Cog):
             await member.remove_roles(muted_role)
             return f"{member.mention} has been muted for repeated offenses."
 
-        if offenses >= warning_threshold:
+        if offenses == warning_threshold:
             user_id = message.author.id
             guild_id = message.guild.id
 
@@ -168,17 +207,28 @@ class VSMod(commands.Cog):
 
         self.offenses[guild_id][user_id] += 1
         
-        self.save_offenses(guild_id)
+        self.save_data(guild_id, "offenses")
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        if isinstance(ctx.channel, discord.DMChannel):
+            # Handle direct messages separately (if needed)
+            pass
+        else:
+            embed = discord.Embed(title="Command Used", color=discord.Color.blue())
+            embed.add_field(name="User", value=ctx.author.mention)
+            embed.add_field(name="Channel", value=ctx.channel.mention)
+            await self.log_event(embed)
+
     
     async def cog_check(self, ctx):
-        if ctx.guild:
-            return ctx.author.guild_permissions.administrator
-        return False
+        return ctx.author.guild_permissions.administrator
 
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def banned_words(self, ctx, action, *words):
         guild_id = ctx.guild.id
+
         if guild_id not in self.banned_words:
             self.banned_words[guild_id] = []
 
@@ -191,11 +241,12 @@ class VSMod(commands.Cog):
 
             if action == 'add':
                 if word not in self.banned_words[guild_id]:
-                    self.banned_words[guild_id].append(word)
+                    self.banned_words[guild_id].append(re.escape(word))  # Escape special characters for regex
             elif action == 'remove':
                 if word in self.banned_words[guild_id]:
-                    self.banned_words[guild_id].remove(word)
+                    self.banned_words[guild_id].remove(re.escape(word))
 
+        # Save the updated banned words list for the guild
         self.save_data(guild_id, "banned_words")
         await ctx.send(f"Banned words updated: {', '.join(words)}")
 
