@@ -1,441 +1,488 @@
 import discord
-from discord.ext import commands
-from redbot.core import commands
-import json
+from redbot.core import commands, Config, checks
+import random
 import os
-import asyncio
-import re
-import sys
-import getpass
+import datetime
+import logging
 
-COG_DIR = os.path.dirname(os.path.realpath(__file__))
-CONFIG_PATH = os.path.join(COG_DIR, "config")
+current_directory = os.path.dirname(os.path.realpath(__file__))
+debug_file_path = os.path.join(current_directory, 'debug.log')
+debug_file = open(debug_file_path, 'w')
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.data_path = CONFIG_PATH
-        self.warnings = {}
-        self.banned_words = {}
-        self.mutes = {}
-        self.bans = {}
-        self.kicks = {}
-        self.offenses = {}
-        self.thresholds = {}
-        current_user = getpass.getuser()
-        self.log_file_path = f'/home/{current_user}/cogs/VSMod/logs/output.log'
-        sys.stdout = open(self.log_file_path, 'w')
-        self.load_data()
+        self.identifier = self.bot.user.id
+        self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
+        default_guild = {
+            'banned_words': [],
+            'actions': {
+                'warning': False,
+                'banning': False,
+                'muting': False
+            },
+            'thresholds': {
+                'warning_threshold': 3,
+                'muting_threshold': 5,
+                'banning_threshold': 7
+            },
+            'mod_actions': [],
+            'warnings': {},
+            'enable_debug': False  # Added enable_debug option
+        }
+        self.config.register_guild(**default_guild)
+        self.config.register_guild(enable_debug=False)
 
-    def load_data(self):
-        for guild in self.bot.guilds:
-            guild_id = guild.id
-            self.warnings[guild_id] = self.load_data_for_guild(guild_id, "warnings")
-            self.mutes[guild_id] = self.load_data_for_guild(guild_id, "mutes")
-            self.bans[guild_id] = self.load_data_for_guild(guild_id, "bans")
-            self.kicks[guild_id] = self.load_data_for_guild(guild_id, "kicks")
-            self.banned_words[guild_id] = self.load_data_for_guild(guild_id, "banned_words")
-            self.thresholds[guild_id] = self.load_data_for_guild(guild_id, "thresholds")
-            
-    def load_data_for_guild(self, guild_id, data_name):
-        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_{data_name}.json')
-        try:
-            with open(file_path, 'r') as file:
-                data = json.load(file)
-                print(f"Loaded data for guild {guild_id}, data_name {data_name}: {data}")
-                return data
-        except FileNotFoundError:
-            print(f"Data file not found for guild {guild_id}, data_name {data_name}")
-            # Create an empty data file if it doesn't exist
-            with open(file_path, 'w') as file:
-                json.dump([], file)  # Initialize as an empty list
-            return []
+        self.muted_role = None
+        self.muted_role_id = None
+        self.create_muted_role()
 
-    def save_data(self, guild_id, data_name):
-        file_path = os.path.join(self.data_path, f'guild_{guild_id}_{data_name}.json')
-        data = getattr(self, data_name).get(guild_id, [])
+    async def create_muted_role(self):
+        guild = discord.utils.get(self.bot.guilds, id=self.muted_role_id)
+        if guild:
+            self.muted_role = discord.utils.get(guild.roles, name="Muted")
+            if not self.muted_role:
+                try:
+                    self.muted_role = await guild.create_role(name="Muted")
+                    for channel in guild.channels:
+                        await channel.set_permissions(self.muted_role, send_messages=False)
+                except Exception as e:
+                    print(f"Error creating muted role: {e}")
+                else:
+                    self.muted_role_id = self.muted_role.id
+                    await self.config.muted_role_id.set(self.muted_role_id)
 
-        with open(file_path, 'w') as file:
-            json.dump(data, file)
+    @commands.group(name="banned_words")
+    async def _banned_words(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running '_banned_words' command")
+            return
+        pass
 
-    def load_from_file(self, data_name):
-        data = {}
-        for guild in self.bot.guilds:
-            guild_id = guild.id
-            file_path = os.path.join(self.data_path, f'guild_{guild_id}_{data_name}.json')
+    @_banned_words.command()
+    async def add(self, ctx, *, words: str):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'add' sub-command of '_banned_words' command")
+            return
+        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        banned_words.extend(words)
+        await self.config.guild(ctx.guild).banned_words.set(list(set(banned_words)))  # Remove duplicates
+        await ctx.send(f'Added {", ".join(words)} to the list of banned words.')
 
-            try:
-                with open(file_path, 'r') as file:
-                    data[guild_id] = json.load(file)
-            except FileNotFoundError:
-                data[guild_id] = {}
+    @_banned_words.command()
+    async def remove(self, ctx, *, words: str):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'remove' sub-command of '_banned_words' command")
+            return
+        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        updated_banned_words = [word for word in banned_words if word not in words]
+        await self.config.guild(ctx.guild).banned_words.set(updated_banned_words)
+        await ctx.send(f'Removed {", ".join(words)} from the list of banned words.')
 
-        return data
-        
-    def save_all_data(self):
-        data_types = ["mutes", "bans", "warnings", "kicks", "banned_words", "thresholds"]
-        for data_type in data_types:
-            for guild_id in self.bot.guilds:
-                self.save_data(guild_id, data_type)
+    @_banned_words.command()
+    async def list(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'list' sub-command of '_banned_words' command")
+            return
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        await ctx.send(f'Banned words: {", ".join(banned_words)}')
 
-    def save_to_file(self, data_name, data):
-        file_path = os.path.join(self.data_path, f'{data_name}.json')
-        with open(file_path, 'w') as file:
-            json.dump(data, file)
-
-    def load_warnings_for_guild(self, guild_id):
-        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_warnings.json')
-        try:
-            with open(file_path, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
-
-    def load_banned_words_for_guild(self, guild_id):
-        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_banned_words.json')
-        try:
-            with open(file_path, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return []  # Change this line to return an empty list
-
-    def load_offenses(self):
-        self.offenses = {}
-
-        for guild in self.bot.guilds:
-            guild_id = guild.id
-
-            self.offenses[guild_id] = self.load_offenses_for_guild(guild_id)
-
-    def load_offenses_for_guild(self, guild_id):
-        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_offenses.json')
-        try:
-            with open(file_path, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
-
-    def save_offenses(self, guild_id):
-        self.create_data_file(guild_id, "offenses")
-        file_path = os.path.join(CONFIG_PATH, f'guild_{guild_id}_offenses.json')
-        with open(file_path, 'w') as file:
-            json.dump(self.offenses.get(guild_id, {}), file)
+    @_banned_words.group(name="settings")
+    async def _settings(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running '_settings' sub-command of '_banned_words' command")
+            return
+        pass
+    
+    @_settings.command()
+    async def warn(self, ctx, threshold: int):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'warn' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.warning.set(True)
+        await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
+        await ctx.send(f'Set warning threshold to {threshold}.')
+    
+    @_settings.command(name="warn_disable")
+    async def warn_disable(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'warn_disable' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.warning.set(False)
+        await ctx.send('Warning threshold has been disabled.')
+    
+    @_settings.command()
+    async def mute(self, ctx, threshold: int):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'mute' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.muting.set(True)
+        await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
+        await ctx.send(f'Set muting threshold to {threshold}.')
+    
+    @_settings.command(name="mute_disable")
+    async def mute_disable(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'mute_disable' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.muting.set(False)
+        await ctx.send('Muting threshold has been disabled.')
+    
+    @_settings.command()
+    async def ban(self, ctx, threshold: int):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'ban' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.banning.set(True)
+        await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
+        await ctx.send(f'Set banning threshold to {threshold}.')
+    
+    @_settings.command(name="ban_disable")
+    async def ban_disable(self, ctx):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'ban_disable' sub-command of '_settings' command")
+            return
+        await self.config.guild(ctx.guild).actions.banning.set(False)
+        await ctx.send('Banning threshold has been disabled.')
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild is None or message.author == self.bot.user:
+        #Add debug print statement
+        if await self.config.guild(message.guild).enable_debug():
+            print("Debug: Running 'on_message' listener")
             return
-    
-        guild_id = message.guild.id
-        user_id = message.author.id
-    
-        offenses = self.offenses.get(guild_id, {}).get(user_id, 0)
-    
+        if message.author.bot:
+            return
+
         content = message.content.lower()
-        for word in self.banned_words.get(guild_id, []):
-            pattern = re.compile(rf'\b{re.escape(word)}\b', re.IGNORECASE)
-            if pattern.search(content):
-                print(f"Banned word detected: {word}")
-                await self.track_offenses(message)
-                action_message = await self.apply_actions(message, offenses)
-    
-                if action_message:
-                    await message.delete()
-                    await message.channel.send(f"{message.author.mention}, your message has been deleted for containing a banned word. "
-                                               f"Please refrain from using such language.")
-                break
 
-    async def apply_actions(self, message, offenses):
-        guild_id = message.guild.id
-
-        warning_threshold = self.thresholds.get(guild_id, {}).get('warning', 3)
-        mute_threshold = self.thresholds.get(guild_id, {}).get('mute', 5)
-        ban_threshold = self.thresholds.get(guild_id, {}).get('ban', 10)
-
-        await message.delete()
-        await message.channel.send(f"{message.author.mention}, your message has been deleted for containing a banned word. Please refrain from using such language.")
-
-        if offenses == ban_threshold:
-            member = message.author
-            await message.guild.ban(member, reason="Repeated offenses", delete_message_days=0)
-            return f"{member.mention} has been banned for repeated offenses."
-
-        if offenses == mute_threshold:
-            member = message.author
-            muted_role = discord.utils.get(message.guild.roles, name='Muted')
-
-            if not muted_role:
-                muted_role = await message.guild.create_role(name='Muted')
-                overwrite = discord.PermissionOverwrite()
-                overwrite.send_messages = False
-
-                for channel in message.guild.channels:
-                    await channel.set_permissions(muted_role, overwrite=overwrite)
-
-            await member.add_roles(muted_role)
-            await asyncio.sleep(parse_time(mute_duration))
-            await member.remove_roles(muted_role)
-            return f"{member.mention} has been muted for repeated offenses."
-
-        if offenses == warning_threshold:
-            user_id = message.author.id
-            guild_id = message.guild.id
-
-            if guild_id not in self.warnings:
-                self.warnings[guild_id] = {}
-
-            if user_id not in self.warnings[guild_id]:
-                self.warnings[guild_id][user_id] = []
-
-            self.warnings[guild_id][user_id].append("Warning for using banned words")
-            self.save_to_file(guild_id, "warnings")
-
-            user = message.author
-            await user.send(f"You have received a warning for using banned words in the server. Please refrain from doing so in the future.")
-
-        return None
-
-    async def track_offenses(self, message):
-        user_id = message.author.id
-        guild_id = message.guild.id
-
-        if guild_id not in self.offenses:
-            self.offenses[guild_id] = {}
-
-        if user_id not in self.offenses[guild_id]:
-            self.offenses[guild_id][user_id] = 0
-
-        self.offenses[guild_id][user_id] += 1
-        
-        self.save_data(guild_id, "offenses")
-
-    @commands.Cog.listener()
-    async def on_command(self, ctx):
-        if isinstance(ctx.channel, discord.DMChannel):
-            # Handle direct messages separately (if needed)
-            pass
-        else:
-            embed = discord.Embed(title="Command Used", color=discord.Color.blue())
-            embed.add_field(name="User", value=ctx.author.mention)
-            embed.add_field(name="Channel", value=ctx.channel.mention)
-            await self.log_event(embed)
-
-    
-    async def cog_check(self, ctx):
-        return ctx.author.guild_permissions.administrator
-
-    @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def banned_words(self, ctx, action, *words):
-        guild_id = ctx.guild.id
-
-        if guild_id not in self.banned_words:
-            self.banned_words[guild_id] = []
-
-        if action not in ['add', 'remove']:
-            await ctx.send("Invalid action. Use 'add' or 'remove'.")
+        if content.startswith("!banned_words add") or content.startswith("!banned_words remove"):
             return
 
-        for word in words:
-            word = word.lower()  # Convert to lowercase for case-insensitive matching
+        banned_words = await self.config.guild(message.guild).banned_words()
 
-            if action == 'add':
-                if word not in self.banned_words[guild_id]:
-                    self.banned_words[guild_id].append(re.escape(word))  # Escape special characters for regex
-            elif action == 'remove':
-                if word in self.banned_words[guild_id]:
-                    self.banned_words[guild_id].remove(re.escape(word))
+        if any(word in content for word in banned_words):
+            actions = await self.config.guild(message.guild).actions()
+            thresholds = await self.config.guild(message.guild).thresholds()
 
-        # Save the updated banned words list for the guild
-        self.save_data(guild_id, "banned_words")
-        await ctx.send(f"Banned words updated: {', '.join(words)}")
+            if actions['warning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Used banned words")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+
+                warning_threshold = thresholds['warning_threshold']
+
+                if len(user_warnings) >= warning_threshold:
+                    await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
+                    # Send a DM to the user
+                    await message.author.send(f'You have received a warning in the server {message.guild.name} for using banned words.')
+                    await message.author.send('Reason: Used banned words')
+
+            if actions['banning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Used banned words")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+
+                banning_threshold = thresholds['banning_threshold']
+
+                if len(user_warnings) >= banning_threshold:
+                    await message.author.ban(reason='Used banned words.')
+                    # Send a DM to the user
+                    await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly using banned words.')
+                    await message.author.send('Reason: Used banned words')
+
+            if actions['muting'] and self.muted_role_id:
+                muted_role = discord.utils.get(message.guild.roles, id=self.muted_role_id)
+                if muted_role:
+                    warnings = await self.config.guild(message.guild).warnings()
+                    user_warnings = warnings.get(str(message.author.id), [])
+                    user_warnings.append("Used banned words")
+                    warnings[str(message.author.id)] = user_warnings
+                    await self.config.guild(message.guild).warnings.set(warnings)
+
+                    muting_threshold = thresholds['muting_threshold']
+
+                    if len(user_warnings) >= muting_threshold:
+                        # Send a DM to the user
+                        await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
+                        await message.author.send(f'Reason: Used banned words')
+
+                        await message.author.add_roles(muted_role)
+
+            # Delete the message and notify the user
+            await message.delete()
+            await message.author.send("Your message has been removed for containing a banned word.")
+            await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def banned_word_settings(self, ctx, action, threshold):
-        guild_id = ctx.guild.id
-        if guild_id not in self.thresholds:
-            self.thresholds[guild_id] = {}
-
-        if action not in ['warning', 'mute', 'ban']:
-            await ctx.send("Invalid action. Use 'warning', 'mute', or 'ban'.")
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def warn(self, ctx, user: discord.Member, *, reason: str):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'warn' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
+        warnings = await self.config.guild(ctx.guild).warnings()
+        user_warnings = warnings.get(str(user.id), [])
+        user_warnings.append(reason)
+        warnings[str(user.id)] = user_warnings
+        await self.config.guild(ctx.guild).warnings.set(warnings)
 
-        self.thresholds[guild_id][action] = int(threshold)
-        self.save_data(guild_id, "thresholds")
-        await ctx.send(f"{action} threshold set to {threshold}.")
+        # Send a DM to the user
+        await user.send(f'You have received a warning in the server {ctx.guild.name}.')
+        await user.send(f'Reason: {reason}')
+
+        # Log the action
+        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        mod_actions.append({
+            'moderator': ctx.author.id,
+            'action': 'warn',
+            'user': user.id,
+            'reason': reason
+        })
+        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+
+        await ctx.send(f'{user.mention} has been warned for: {reason}')
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def list_banned_words(self, ctx):
-        guild_id = ctx.guild.id
-        banned_words = self.banned_words.get(guild_id, {})
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def kick(self, ctx, user: discord.Member, *, reason: str):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'kick' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            return
+        await user.kick(reason=reason)
 
-        if banned_words:
-            embed = discord.Embed(title="List of Banned Words", color=discord.Color.red())
-            for word in banned_words:
-                embed.add_field(name=word, value="Banned", inline=False)
-            await ctx.send(embed=embed)
+        # Send a DM to the user
+        await user.send(f'You have been Kicked from the server {ctx.guild.name}.')
+        await user.send(f'Reason: {reason}')
+
+        # Log the action
+        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        mod_actions.append({
+            'moderator': ctx.author.id,
+            'action': 'kick',
+            'user': user.id,
+            'reason': reason
+        })
+        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+
+        await ctx.send(f'{user.mention} has been kicked for: {reason}')
+
+    @commands.command()
+    @commands.guild_only()
+    @checks.mod_or_permissions(manage_roles=True)
+    async def mute(self, ctx, user: discord.Member, *, reason: str):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            return
+        muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
+        if muted_role:
+            await user.add_roles(muted_role)
+
+            # Send a DM to the user
+            await user.send(f'You have been muted in the server {ctx.guild.name}.')
+            await user.send(f'Reason: {reason}')
+
+            # Log the action
+            mod_actions = await self.config.guild(ctx.guild).mod_actions()
+            mod_actions.append({
+                'moderator': ctx.author.id,
+                'action': 'mute',
+                'user': user.id,
+                'reason': reason
+            })
+            await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+
+            await ctx.send(f'{user.mention} has been muted for: {reason}')
         else:
-            await ctx.send("There are no banned words in this server.")
-
+            await ctx.send("Muted role not found. Please set up the muted role first.")
+    
     @commands.command()
-    @commands.has_permissions(manage_roles=True)
-    async def mute(self, ctx, member: discord.Member, duration: str = None):
-        muted_role = discord.utils.get(ctx.guild.roles, name='Muted')
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def ban(self, ctx, user: discord.Member, *, reason: str):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'ban' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            return
+        await user.ban(reason=reason)
 
-        if not muted_role:
-            muted_role = await ctx.guild.create_role(name='Muted')
+        # Send a DM to the user
+        await user.send(f'You have been banned from the server {ctx.guild.name}.')
+        await user.send(f'Reason: {reason}')
 
-            overwrite = discord.PermissionOverwrite()
-            overwrite.send_messages = False
-            for channel in ctx.guild.channels:
-                await channel.set_permissions(muted_role, overwrite=overwrite)
+        # Log the action
+        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        mod_actions.append({
+            'moderator': ctx.author.id,
+            'action': 'ban',
+            'user': user.id,
+            'reason': reason
+        })
+        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
 
-        await member.add_roles(muted_role)
-        await ctx.send(f"{member.mention} has been muted.")
-
-        if duration:
-            self.mutes[ctx.guild.id][member.id] = parse_time(duration)
-            self.save_data(ctx.guild.id, "mutes")
-            await asyncio.sleep(parse_time(duration))
-            await member.remove_roles(muted_role)
-            del self.mutes[ctx.guild.id][member.id]
-            self.save_data(ctx.guild.id, "mutes")
-
+        await ctx.send(f'{user.mention} has been banned for: {reason}')
+    
     @commands.command()
-    @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx, member: discord.Member, duration: str = None):
-        await member.ban()
-        await ctx.send(f"{member.mention} has been banned.")
-
-        if duration:
-            self.bans[ctx.guild.id][member.id] = parse_time(duration)
-            self.save_data(ctx.guild.id, "bans")
-            await asyncio.sleep(parse_time(duration))
-            await member.unban()
-            del self.bans[ctx.guild.id][member.id]
-            self.save_data(ctx.guild.id, "bans")
-
-    @commands.command()
-    async def user_info(self, ctx, member: discord.Member = None):
-        member = member or ctx.author
-        roles = [role.name for role in member.roles[1:]]  # Skip @everyone role
-
-        embed = discord.Embed(title=f"User Information for {member}", color=discord.Color.green())
-        embed.set_thumbnail(url=member.avatar_url)
-        embed.add_field(name="ID", value=member.id, inline=False)
-        embed.add_field(name="Nickname", value=member.display_name, inline=False)
-        embed.add_field(name="Joined Server", value=member.joined_at.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
-        embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
-        embed.add_field(name="Roles", value=", ".join(roles) if roles else "None", inline=False)
-
-        await ctx.send(embed=embed)
-
-    @commands.command()
-    async def set_command_roles(self, ctx, command_name, *roles):
-        guild_id = ctx.guild.id
-        if guild_id not in self.command_roles:
-            self.command_roles[guild_id] = {}
-
-        self.command_roles[guild_id][command_name] = roles
-        self.save_command_roles(guild_id)
-        await ctx.send(f"Roles for {command_name} command set to: {', '.join(roles)}")
-
-    @commands.command()
-    @commands.has_permissions(kick_members=True)
-    async def warn(self, ctx, member: discord.Member, *, reason):
-        guild_id = ctx.guild.id
-        user_id = member.id
-
-        if guild_id not in self.warnings:
-            self.warnings[guild_id] = {}
-
-        if user_id not in self.warnings[guild_id]:
-            self.warnings[guild_id][user_id] = []
-
-        self.warnings[guild_id][user_id].append(reason)
-        self.save_data(guild_id, "warnings")
-        await ctx.send(f"{member.mention} has been warned for: {reason}")
-
-    @commands.command()
-    @commands.has_permissions(kick_members=True)
-    async def kick(self, ctx, member: discord.Member, *, reason):
-        guild_id = ctx.guild.id
-        user_id = member.id
-
-        if guild_id not in self.kicks:
-            self.kicks[guild_id] = {}
-
-        if user_id not in self.kicks[guild_id]:
-            self.kicks[guild_id][user_id] = []
-
-        self.kicks[guild_id][user_id].append(reason)
-        self.save_data(guild_id, "kicks")
-        await member.kick(reason=reason)
-        await ctx.send(f"{member.mention} has been kicked for: {reason}")
-
-    @commands.command()
-    async def view_warnings(self, ctx, member: discord.Member):
-        guild_id = ctx.guild.id
-        user_id = member.id
-
-        warnings = self.warnings.get(guild_id, {}).get(user_id)
-        print(self.warnings)
-        
-        if warnings:
-            embed = discord.Embed(title=f"Warnings for {member}", color=discord.Color.gold())
-            for index, warning in enumerate(warnings):
-                embed.add_field(name=f"Warning {index + 1}", value=warning, inline=False)
-            await ctx.send(embed=embed)
+    @commands.guild_only()
+    @checks.mod_or_permissions(manage_roles=True)
+    async def unmute(self, ctx, user: discord.Member):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
+            return
+        muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
+        if muted_role and muted_role in user.roles:
+            await user.remove_roles(muted_role)
+            await ctx.send(f'{user.mention} has been unmuted.')
         else:
-            await ctx.send(f"{member} has no warnings.")
-        
-
+            await ctx.send(f'{user.mention} is not muted.')
 
     @commands.command()
-    @commands.has_permissions(manage_messages=True)
-    async def clear_warnings(self, ctx, member: discord.Member):
-        guild_id = ctx.guild.id
-        user_id = member.id
-
-        if guild_id in self.warnings and user_id in self.warnings[guild_id]:
-            del self.warnings[guild_id][user_id]
-            self.save_data(guild_id, "warnings")
-            await ctx.send(f"Warnings for {member} have been cleared.")
-        else:
-            await ctx.send(f"{member} has no warnings.")
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def unban(self, ctx, user: discord.User):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'unban' command with user {user.name}#{user.discriminator} ({user.id})")
+            return
+        await ctx.guild.unban(user)
+        await ctx.send(f'{user.mention} has been unbanned.')
 
     @commands.command()
-    @commands.has_permissions(administrator=True)
-    async def set_warning_expiry(self, ctx, duration: str = "6m"):
-        guild_id = ctx.guild.id
-
-        # Parse the duration
-        expiry_time = parse_time(duration)
-
-        if guild_id not in self.warning_expiry:
-            self.warning_expiry[guild_id] = {}  # Ensure there's a dictionary for this guild
-
-        # Save the expiry time to the config
-        self.warning_expiry[guild_id] = expiry_time
-        self.save_data(guild_id, "warning_expiry")
-
-        await ctx.send(f"Warning expiry time set to {expiry_time} seconds.")
-
-    def parse_time(duration):
-        units = {
-            's': 1,
-            'm': 60,
-            'h': 3600,
-            'd': 86400,
-        }
-
-        unit = duration[-1]
-        if unit in units:
-            return int(duration[:-1]) * units[unit]
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def clear_warnings(self, ctx, user: discord.Member):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'clear_warnings' command with user {user.name}#{user.discriminator} ({user.id})")
+            return
+        warnings = await self.config.guild(ctx.guild).warnings()
+        user_warnings = warnings.get(str(user.id), [])
+        if user_warnings:
+            warnings[str(user.id)] = []
+            await self.config.guild(ctx.guild).warnings.set(warnings)
+            await ctx.send(f'Warnings for {user.mention} have been cleared.')
         else:
-            return int(duration)
+            await ctx.send(f'{user.mention} has no warnings.')
+
+    @commands.command()
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def view_warnings(self, ctx, user: discord.Member = None):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'view_warnings' command")
+            return
+        if not user:
+            user = ctx.author
+
+        # Check if the user is viewing their own warnings or is a moderator
+        if user != ctx.author and not ctx.author.guild_permissions.ban_members:
+            return await ctx.send("You can only view your own warnings.")
+
+        warnings = await self.config.guild(ctx.guild).warnings()
+        user_warnings = warnings.get(str(user.id), [])
+        if user_warnings:
+            warnings_embeds = []
+            for idx, reason in enumerate(user_warnings, start=1):
+                embed = discord.Embed(
+                    title=f'Warning {idx}',
+                    description=f'User: {user.mention}\nModerator: {ctx.author.mention}\nReason: {reason}',
+                    color=discord.Color.orange()
+                )
+                embed.set_footer(text=f'Page {idx}/{len(user_warnings)}')
+                warnings_embeds.append(embed)
+
+            current_page = 0
+            message = await ctx.send(embed=warnings_embeds[current_page])
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+            await message.add_reaction("❌")  # Cross emoji
+            await message.add_reaction("✅")  # Checkmark emoji
+
+            def check(reaction, user):
+                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["❌", "✅"]
+
+            while True:
+                try:
+                    reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+                except TimeoutError:
+                    break
+                else:
+                    if str(reaction.emoji) == "➡️":
+                        if current_page < len(warnings_embeds) - 1:
+                            current_page += 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "⬅️":
+                        if current_page > 0:
+                            current_page -= 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "❌":
+                        # Delete the warning if user is a moderator
+                        if ctx.author.guild_permissions.ban_members:
+                            user_warnings.pop(current_page)
+                            warnings[str(user.id)] = user_warnings
+                            await self.config.guild(ctx.guild).warnings.set(warnings)
+                            if len(user_warnings) > 0:
+                                current_page = min(current_page, len(user_warnings) - 1)
+                                await message.edit(embed=warnings_embeds[current_page])
+                            else:
+                                await message.delete()
+                                break
+                        else:
+                            await ctx.send("You do not have permission to delete warnings.")
+                    elif str(reaction.emoji) == "✅":
+                        # Close the embed
+                        await message.delete()
+                        break
+                    await message.remove_reaction(reaction, user)
+        else:
+            await ctx.send(f'{user.mention} has no warnings.')
+
+    @commands.command()
+    @commands.guild_only()
+    @checks.mod_or_permissions(ban_members=True)
+    async def view_mod_actions(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'view_mod_actions' command")
+            return
+        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        if mod_actions:
+            mod_actions_str = '\n'.join([f'Moderator: {ctx.guild.get_member(action["moderator"]).mention}, '
+                                         f'Action: {action["action"]}, '
+                                         f'User: {ctx.guild.get_member(action["user"]).mention}, '
+                                         f'Reason: {action["reason"]}' for action in mod_actions])
+            await ctx.send(mod_actions_str)
+        else:
+            await ctx.send('No moderator actions recorded.')
+
+    @commands.is_owner()
+    @commands.command()
+    async def purge_banned_words(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print(f"Debug: Running 'purge_banned_words' command")
+            return
+        await self.config.guild(ctx.guild).banned_words.set([])
+        await ctx.send("Banned words list has been purged.")
+    
+    @commands.is_owner()
+    @commands.command()
+    async def enable_debug(self, ctx, enable: bool):
+        await self.config.guild(ctx.guild).enable_debug.set(enable)
+        await ctx.send(f'Debug mode has been {"enabled" if enable else "disabled"}.')
 
 def setup(bot):
     bot.add_cog(VSMod(bot))
