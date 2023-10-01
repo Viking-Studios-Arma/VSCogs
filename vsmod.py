@@ -121,21 +121,20 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).actions.warning.set(False)
         await ctx.send('Warning threshold has been disabled.')
     
-@_settings.command(name="set_mute")
-async def set_mute(self, ctx, threshold: int, time: int):
-    # Add debug print statement
-    if await self.config.guild(ctx.guild).enable_debug():
-        print("Debug: Running 'set_mute' sub-command of '_settings' command")
-        return
+    @_settings.command(name="set_mute")
+    async def set_mute(self, ctx, threshold: int, time: int):
+        # Add debug print statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'set_mute' sub-command of '_settings' command")
+            return
 
-    # Set muting actions and thresholds
-    await self.config.guild(ctx.guild).actions.muting.set(True)
-    await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
-    await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
+        # Set muting actions and thresholds
+        await self.config.guild(ctx.guild).actions.muting.set(True)
+        await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
+        await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
 
-    await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
+        await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
 
-    
     @_settings.command(name="mute_disable")
     async def mute_disable(self, ctx):
         # Add debug print statement
