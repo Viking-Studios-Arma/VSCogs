@@ -19,7 +19,8 @@ class VSMod(commands.Cog):
             'actions': {
                 'warning': False,
                 'banning': False,
-                'muting': False
+                'muting': False,
+                'invite_link_filter': False
             },
             'thresholds': {
                 'warning_threshold': 3,
@@ -29,10 +30,11 @@ class VSMod(commands.Cog):
             },
             'mod_actions': [],
             'warnings': {},
-            'enable_debug': False  # Added enable_debug option
+            'default_mute_duration': 5,
+            'enable_debug': False,  # Added enable_debug option
+            'suggestion_channel_id': None 
         }
         self.config.register_guild(**default_guild)
-        self.config.register_guild(enable_debug=False)
 
         self.muted_role = None
         self.muted_role_id = None
@@ -52,6 +54,15 @@ class VSMod(commands.Cog):
                 else:
                     self.muted_role_id = self.muted_role.id
                     await self.config.muted_role_id.set(self.muted_role_id)
+
+    async def filter_invite_links(self, message):
+        if message.guild is None:
+            return
+
+        if await self.config.guild(message.guild).actions.invite_link_filter():
+            if "discord.gg/" in message.content:
+                await message.delete()
+                await message.author.send("You cannot send Discord invite links in this server.")
 
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
@@ -237,6 +248,7 @@ class VSMod(commands.Cog):
             await message.delete()
             await message.author.send("Your message has been removed for containing a banned word.")
             await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
+            await self.filter_invite_links(message)
 
     @commands.command()
     @commands.guild_only()
@@ -295,12 +307,19 @@ class VSMod(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(manage_roles=True)
-    async def mute(self, ctx, user: discord.Member, *, reason: str):
+    async def mute(self, ctx, user: discord.Member, time: int = None, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
             print(f"Debug: Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
+
         muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
         if muted_role:
+            if time is not None:
+                # Set muting actions, thresholds, and time
+                await self.config.guild(ctx.guild).actions.muting.set(True)
+                await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Change as needed
+                await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
+
             await user.add_roles(muted_role)
 
             # Send a DM to the user
@@ -320,6 +339,12 @@ class VSMod(commands.Cog):
             await ctx.send(f'{user.mention} has been muted for: {reason}')
         else:
             await ctx.send("Muted role not found. Please set up the muted role first.")
+
+    async def unmute_after_time(self, guild, user, time):
+        await asyncio.sleep(time * 60)  # Convert minutes to seconds
+        muted_role = discord.utils.get(guild.roles, id=self.muted_role_id)
+        if muted_role and muted_role in user.roles:
+            await user.remove_roles(muted_role)
     
     @commands.command()
     @commands.guild_only()
@@ -475,6 +500,87 @@ class VSMod(commands.Cog):
             await ctx.send(mod_actions_str)
         else:
             await ctx.send('No moderator actions recorded.')
+
+    @commands.group(name="invite_links")
+    async def _invite_links(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running '_invite_links' command")
+            return
+
+    @_invite_links.command(name="enable")
+    async def enable_invite_links(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'enable' sub-command of '_invite_links' command")
+            return
+        await self.config.guild(ctx.guild).actions.invite_link_filter.set(True)
+        await ctx.send('Invite link filtering has been enabled.')
+
+    @_invite_links.command(name="disable")
+    async def disable_invite_links(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'disable' sub-command of '_invite_links' command")
+            return
+        await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
+        await ctx.send('Invite link filtering has been disabled.')
+
+    @commands.group(name="suggest")
+    async def _suggest(self, ctx, *, suggestion):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'suggest' command")
+            return
+        suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
+
+        if suggestion_channel_id is None:
+            await ctx.send('Please ask the server owner to set the suggestion channel first.')
+            return
+
+        suggestion_channel = self.bot.get_channel(suggestion_channel_id)
+
+        if suggestion_channel is not None:
+            embed = discord.Embed(
+                title="New Suggestion",
+                description=suggestion,
+                color=discord.Color.blue()
+            )
+
+            embed.set_footer(text=f"Suggested by {ctx.author.display_name}", icon_url=ctx.author.avatar.url)
+
+            message = await suggestion_channel.send(embed=embed)
+            await message.add_reaction("👍")
+            await message.add_reaction("👎")
+
+            await ctx.message.delete()
+            await ctx.send('Your suggestion has been submitted!')
+        else:
+            await ctx.send('Suggestion channel not found. Please ask the server owner to set it.')
+
+    @commands.group(name="mod_settings")
+    async def _mod_settings(self, ctx):
+        pass
+
+    @commands.group(name="suggestion_settings")
+    async def _suggestion_settings(self, ctx):
+        pass
+
+    @_mod_settings.command(name="set_mute_duration")
+    async def set_mute_duration(self, ctx, duration: int):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'set_mute_duration' sub-command of '_settings' command")
+            return
+
+        await self.config.guild(ctx.guild).default_mute_duration.set(duration)
+        await ctx.send(f'Default mute duration set to {duration} minutes.')
+
+    @_suggestion_settings.command(name="set_suggestion_channel")
+    async def set_suggestion_channel(self, ctx, channel: discord.TextChannel):
+        if await self.config.guild(ctx.guild).enable_debug():
+            print("Debug: Running 'set_suggestion_channel' command")
+            return
+        if ctx.author.guild_permissions.administrator:
+            await self.config.guild(ctx.guild).suggestion_channel_id.set(channel.id)
+            await ctx.send(f'Suggestion channel set to {channel.mention}.')
+        else:
+            await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
     @commands.is_owner()
     @commands.command()
