@@ -62,7 +62,8 @@ class VSMod(commands.Cog):
         if await self.config.guild(message.guild).actions.invite_link_filter():
             if "discord.gg/" in message.content:
                 await message.delete()
-                await message.author.send("You cannot send Discord invite links in this server.")
+                await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
+                await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
 
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
@@ -176,13 +177,13 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
+        if message.guild is None:
+            return
         #Add debug print statement
         if await self.config.guild(message.guild).enable_debug():
             print("Debug: Running 'on_message' listener")
             return
         if message.author.bot:
-            return
-        if message.guild is None:
             return
 
         content = message.content.lower()
@@ -246,9 +247,10 @@ class VSMod(commands.Cog):
 
             # Delete the message and notify the user
             await message.delete()
-            await message.author.send("Your message has been removed for containing a banned word.")
+            await message.author.send(f"Your message has been removed from {message.guild.name} for containing a banned word.")
             await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
-            await self.filter_invite_links(message)
+        #Invite link Filter
+        await self.filter_invite_links(message)
 
     @commands.command()
     @commands.guild_only()
