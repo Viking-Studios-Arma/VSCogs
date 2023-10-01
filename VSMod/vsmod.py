@@ -41,8 +41,7 @@ class VSMod(commands.Cog):
         self.create_muted_role()
 
     async def create_muted_role(self):
-        guild = discord.utils.get(self.bot.guilds, id=self.muted_role_id)
-        if guild:
+        if guild := discord.utils.get(self.bot.guilds, id=self.muted_role_id):
             self.muted_role = discord.utils.get(guild.roles, name="Muted")
             if not self.muted_role:
                 try:
@@ -56,14 +55,12 @@ class VSMod(commands.Cog):
                     await self.config.muted_role_id.set(self.muted_role_id)
 
     async def filter_invite_links(self, message):
-        if message.guild is None:
+        if message.guild is None or message.author.bot:
             return
-
-        if await self.config.guild(message.guild).actions.invite_link_filter():
-            if "discord.gg/" in message.content:
-                await message.delete()
-                await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
-                await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
+        if await self.config.guild(message.guild).actions.invite_link_filter() and "discord.gg/" in message.content:
+            await message.delete()
+            await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
+            await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
 
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
@@ -71,7 +68,6 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             print("Debug: Running '_banned_words' command")
             return
-        pass
 
     @_banned_words.command()
     async def add(self, ctx, *, words: str):
@@ -112,7 +108,6 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             print("Debug: Running '_settings' sub-command of '_banned_words' command")
             return
-        pass
     
     @_settings.command()
     async def set_warn(self, ctx, threshold: int):
@@ -177,13 +172,11 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild is None:
+        if message.guild is None or message.author.bot:
             return
         #Add debug print statement
         if await self.config.guild(message.guild).enable_debug():
             print("Debug: Running 'on_message' listener")
-            return
-        if message.author.bot:
             return
 
         content = message.content.lower()
@@ -228,8 +221,9 @@ class VSMod(commands.Cog):
                     await message.author.send('Reason: Used banned words')
 
             if actions['muting'] and self.muted_role_id:
-                muted_role = discord.utils.get(message.guild.roles, id=self.muted_role_id)
-                if muted_role:
+                if muted_role := discord.utils.get(
+                    message.guild.roles, id=self.muted_role_id
+                ):
                     warnings = await self.config.guild(message.guild).warnings()
                     user_warnings = warnings.get(str(message.author.id), [])
                     user_warnings.append("Used banned words")
@@ -241,7 +235,7 @@ class VSMod(commands.Cog):
                     if len(user_warnings) >= muting_threshold:
                         # Send a DM to the user
                         await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
-                        await message.author.send(f'Reason: Used banned words')
+                        await message.author.send('Reason: Used banned words')
 
                         await message.author.add_roles(muted_role)
 
@@ -314,8 +308,7 @@ class VSMod(commands.Cog):
             print(f"Debug: Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
 
-        muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
-        if muted_role:
+        if muted_role := discord.utils.get(ctx.guild.roles, id=self.muted_role_id):
             if time is not None:
                 # Set muting actions, thresholds, and time
                 await self.config.guild(ctx.guild).actions.muting.set(True)
@@ -405,8 +398,7 @@ class VSMod(commands.Cog):
             print(f"Debug: Running 'clear_warnings' command with user {user.name}#{user.discriminator} ({user.id})")
             return
         warnings = await self.config.guild(ctx.guild).warnings()
-        user_warnings = warnings.get(str(user.id), [])
-        if user_warnings:
+        if user_warnings := warnings.get(str(user.id), []):
             warnings[str(user.id)] = []
             await self.config.guild(ctx.guild).warnings.set(warnings)
             await ctx.send(f'Warnings for {user.mention} have been cleared.')
@@ -418,7 +410,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def view_warnings(self, ctx, user: discord.Member = None):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'view_warnings' command")
+            print("Debug: Running 'view_warnings' command")
             return
         if not user:
             user = ctx.author
@@ -431,6 +423,16 @@ class VSMod(commands.Cog):
         user_warnings = warnings.get(str(user.id), [])
         if user_warnings:
             warnings_embeds = []
+            instructions = "React with ❌ to delete a warning (only available for moderators).\nReact with ✅ to close this message.\nUse ⬅️ ➡️ to navigate."
+
+            # Adding instructions field
+            instructions_embed = discord.Embed(
+                title="Instructions",
+                description=instructions,
+                color=discord.Color.green()  # You can change the color as desired
+            )
+            warnings_embeds.append(instructions_embed)
+
             for idx, reason in enumerate(user_warnings, start=1):
                 embed = discord.Embed(
                     title=f'Warning {idx}',
@@ -448,7 +450,11 @@ class VSMod(commands.Cog):
             await message.add_reaction("✅")  # Checkmark emoji
 
             def check(reaction, user):
-                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["❌", "✅"]
+                return (
+                    user == ctx.author
+                    and reaction.message.id == message.id
+                    and str(reaction.emoji) in {"❌", "✅"}
+                )
 
             while True:
                 try:
@@ -489,72 +495,89 @@ class VSMod(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
-    async def view_mod_actions(self, ctx):
+    async def view_warnings(self, ctx, user: discord.Member = None):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'view_mod_actions' command")
+            print("Debug: Running 'view_warnings' command")
             return
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
-        if mod_actions:
-            mod_actions_str = '\n'.join([f'Moderator: {ctx.guild.get_member(action["moderator"]).mention}, '
-                                         f'Action: {action["action"]}, '
-                                         f'User: {ctx.guild.get_member(action["user"]).mention}, '
-                                         f'Reason: {action["reason"]}' for action in mod_actions])
-            await ctx.send(mod_actions_str)
-        else:
-            await ctx.send('No moderator actions recorded.')
+        if not user:
+            user = ctx.author
 
-    @commands.group(name="invite_links")
-    async def _invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running '_invite_links' command")
-            return
+        # Check if the user is viewing their own warnings or is a moderator
+        if user != ctx.author and not ctx.author.guild_permissions.ban_members:
+            return await ctx.send("You can only view your own warnings.")
 
-    @_invite_links.command(name="enable")
-    async def enable_invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'enable' sub-command of '_invite_links' command")
-            return
-        await self.config.guild(ctx.guild).actions.invite_link_filter.set(True)
-        await ctx.send('Invite link filtering has been enabled.')
+        warnings = await self.config.guild(ctx.guild).warnings()
+        user_warnings = warnings.get(str(user.id), [])
+        if user_warnings:
+            warnings_embeds = []
+            instructions = "React with ❌ to delete a warning (only available for moderators).\nReact with ✅ to close this message.\nReact with ✅ to close this message.\nUse ⬅️ ➡️ to navigate."
 
-    @_invite_links.command(name="disable")
-    async def disable_invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'disable' sub-command of '_invite_links' command")
-            return
-        await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
-        await ctx.send('Invite link filtering has been disabled.')
-
-    @commands.group(name="suggest")
-    async def _suggest(self, ctx, *, suggestion):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'suggest' command")
-            return
-        suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
-
-        if suggestion_channel_id is None:
-            await ctx.send('Please ask the server owner to set the suggestion channel first.')
-            return
-
-        suggestion_channel = self.bot.get_channel(suggestion_channel_id)
-
-        if suggestion_channel is not None:
-            embed = discord.Embed(
-                title="New Suggestion",
-                description=suggestion,
-                color=discord.Color.blue()
+            # Adding instructions field
+            instructions_embed = discord.Embed(
+                title="Instructions",
+                description=instructions,
+                color=discord.Color.green()  # You can change the color as desired
             )
+            warnings_embeds.append(instructions_embed)
 
-            embed.set_footer(text=f"Suggested by {ctx.author.display_name}", icon_url=ctx.author.avatar.url)
+            for idx, reason in enumerate(user_warnings, start=1):
+                embed = discord.Embed(
+                    title=f'Warning {idx}',
+                    description=f'User: {user.mention}\nModerator: {ctx.author.mention}\nReason: {reason}',
+                    color=discord.Color.orange()
+                )
+                embed.set_footer(text=f'Page {idx}/{len(user_warnings)}')
+                warnings_embeds.append(embed)
 
-            message = await suggestion_channel.send(embed=embed)
-            await message.add_reaction("👍")
-            await message.add_reaction("👎")
+            current_page = 0
+            message = await ctx.send(embed=warnings_embeds[current_page])
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+            await message.add_reaction("❌")  # Cross emoji
+            await message.add_reaction("✅")  # Checkmark emoji
 
-            await ctx.message.delete()
-            await ctx.send('Your suggestion has been submitted!')
+            def check(reaction, user):
+                return (
+                    user == ctx.author
+                    and reaction.message.id == message.id
+                    and str(reaction.emoji) in {"❌", "✅", "⬅️", "➡️"}
+                )
+
+            while True:
+                try:
+                    reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+                except TimeoutError:
+                    break
+                else:
+                    if str(reaction.emoji) == "➡️":
+                        if current_page < len(warnings_embeds) - 1:
+                            current_page += 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "⬅️":
+                        if current_page > 0:
+                            current_page -= 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "❌":
+                        # Delete the warning if user is a moderator
+                        if ctx.author.guild_permissions.ban_members:
+                            user_warnings.pop(current_page-1)  # Subtract 1 to account for the instructions page
+                            warnings[str(user.id)] = user_warnings
+                            await self.config.guild(ctx.guild).warnings.set(warnings)
+                            if len(user_warnings) > 0:
+                                current_page = min(current_page, len(user_warnings))
+                                await message.edit(embed=warnings_embeds[current_page])
+                            else:
+                                await message.delete()
+                                break
+                        else:
+                            await ctx.send("You do not have permission to delete warnings.")
+                    elif str(reaction.emoji) == "✅":
+                        # Close the embed
+                        await message.delete()
+                        break
+                    await message.remove_reaction(reaction, user)
         else:
-            await ctx.send('Suggestion channel not found. Please ask the server owner to set it.')
+            await ctx.send(f'{user.mention} has no warnings.')
 
     @commands.group(name="mod_settings")
     async def _mod_settings(self, ctx):
@@ -588,7 +611,7 @@ class VSMod(commands.Cog):
     @commands.command()
     async def purge_banned_words(self, ctx):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'purge_banned_words' command")
+            print("Debug: Running 'purge_banned_words' command")
             return
         await self.config.guild(ctx.guild).banned_words.set([])
         await ctx.send("Banned words list has been purged.")
