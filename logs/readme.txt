@@ -1,1 +1,0 @@
-this is where the output.log file will be for debugging
