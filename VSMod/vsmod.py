@@ -55,7 +55,7 @@ class VSMod(commands.Cog):
                     await self.config.muted_role_id.set(self.muted_role_id)
 
     async def filter_invite_links(self, message):
-        if message.guild is None:
+        if message.guild is None or message.author.bot:
             return
         if await self.config.guild(message.guild).actions.invite_link_filter() and "discord.gg/" in message.content:
             await message.delete()
@@ -172,13 +172,11 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.guild is None:
+        if message.guild is None or message.author.bot:
             return
         #Add debug print statement
         if await self.config.guild(message.guild).enable_debug():
             print("Debug: Running 'on_message' listener")
-            return
-        if message.author.bot:
             return
 
         content = message.content.lower()
@@ -425,6 +423,16 @@ class VSMod(commands.Cog):
         user_warnings = warnings.get(str(user.id), [])
         if user_warnings:
             warnings_embeds = []
+            instructions = "React with ❌ to delete a warning (only available for moderators).\nReact with ✅ to close this message.\nUse ⬅️ ➡️ to navigate."
+
+            # Adding instructions field
+            instructions_embed = discord.Embed(
+                title="Instructions",
+                description=instructions,
+                color=discord.Color.green()  # You can change the color as desired
+            )
+            warnings_embeds.append(instructions_embed)
+
             for idx, reason in enumerate(user_warnings, start=1):
                 embed = discord.Embed(
                     title=f'Warning {idx}',
