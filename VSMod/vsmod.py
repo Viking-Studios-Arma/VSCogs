@@ -495,72 +495,89 @@ class VSMod(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
-    async def view_mod_actions(self, ctx):
+    async def view_warnings(self, ctx, user: discord.Member = None):
         if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'view_mod_actions' command")
+            print("Debug: Running 'view_warnings' command")
             return
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
-        if mod_actions:
-            mod_actions_str = '\n'.join([f'Moderator: {ctx.guild.get_member(action["moderator"]).mention}, '
-                                         f'Action: {action["action"]}, '
-                                         f'User: {ctx.guild.get_member(action["user"]).mention}, '
-                                         f'Reason: {action["reason"]}' for action in mod_actions])
-            await ctx.send(mod_actions_str)
-        else:
-            await ctx.send('No moderator actions recorded.')
+        if not user:
+            user = ctx.author
 
-    @commands.group(name="invite_links")
-    async def _invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running '_invite_links' command")
-            return
+        # Check if the user is viewing their own warnings or is a moderator
+        if user != ctx.author and not ctx.author.guild_permissions.ban_members:
+            return await ctx.send("You can only view your own warnings.")
 
-    @_invite_links.command(name="enable")
-    async def enable_invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'enable' sub-command of '_invite_links' command")
-            return
-        await self.config.guild(ctx.guild).actions.invite_link_filter.set(True)
-        await ctx.send('Invite link filtering has been enabled.')
+        warnings = await self.config.guild(ctx.guild).warnings()
+        user_warnings = warnings.get(str(user.id), [])
+        if user_warnings:
+            warnings_embeds = []
+            instructions = "React with ❌ to delete a warning (only available for moderators).\nReact with ✅ to close this message.\nReact with ✅ to close this message.\nUse ⬅️ ➡️ to navigate."
 
-    @_invite_links.command(name="disable")
-    async def disable_invite_links(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'disable' sub-command of '_invite_links' command")
-            return
-        await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
-        await ctx.send('Invite link filtering has been disabled.')
-
-    @commands.group(name="suggest")
-    async def _suggest(self, ctx, *, suggestion):
-        if await self.config.guild(ctx.guild).enable_debug():
-            print("Debug: Running 'suggest' command")
-            return
-        suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
-
-        if suggestion_channel_id is None:
-            await ctx.send('Please ask the server owner to set the suggestion channel first.')
-            return
-
-        suggestion_channel = self.bot.get_channel(suggestion_channel_id)
-
-        if suggestion_channel is not None:
-            embed = discord.Embed(
-                title="New Suggestion",
-                description=suggestion,
-                color=discord.Color.blue()
+            # Adding instructions field
+            instructions_embed = discord.Embed(
+                title="Instructions",
+                description=instructions,
+                color=discord.Color.green()  # You can change the color as desired
             )
+            warnings_embeds.append(instructions_embed)
 
-            embed.set_footer(text=f"Suggested by {ctx.author.display_name}", icon_url=ctx.author.avatar.url)
+            for idx, reason in enumerate(user_warnings, start=1):
+                embed = discord.Embed(
+                    title=f'Warning {idx}',
+                    description=f'User: {user.mention}\nModerator: {ctx.author.mention}\nReason: {reason}',
+                    color=discord.Color.orange()
+                )
+                embed.set_footer(text=f'Page {idx}/{len(user_warnings)}')
+                warnings_embeds.append(embed)
 
-            message = await suggestion_channel.send(embed=embed)
-            await message.add_reaction("👍")
-            await message.add_reaction("👎")
+            current_page = 0
+            message = await ctx.send(embed=warnings_embeds[current_page])
+            await message.add_reaction("⬅️")
+            await message.add_reaction("➡️")
+            await message.add_reaction("❌")  # Cross emoji
+            await message.add_reaction("✅")  # Checkmark emoji
 
-            await ctx.message.delete()
-            await ctx.send('Your suggestion has been submitted!')
+            def check(reaction, user):
+                return (
+                    user == ctx.author
+                    and reaction.message.id == message.id
+                    and str(reaction.emoji) in {"❌", "✅", "⬅️", "➡️"}
+                )
+
+            while True:
+                try:
+                    reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+                except TimeoutError:
+                    break
+                else:
+                    if str(reaction.emoji) == "➡️":
+                        if current_page < len(warnings_embeds) - 1:
+                            current_page += 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "⬅️":
+                        if current_page > 0:
+                            current_page -= 1
+                            await message.edit(embed=warnings_embeds[current_page])
+                    elif str(reaction.emoji) == "❌":
+                        # Delete the warning if user is a moderator
+                        if ctx.author.guild_permissions.ban_members:
+                            user_warnings.pop(current_page-1)  # Subtract 1 to account for the instructions page
+                            warnings[str(user.id)] = user_warnings
+                            await self.config.guild(ctx.guild).warnings.set(warnings)
+                            if len(user_warnings) > 0:
+                                current_page = min(current_page, len(user_warnings))
+                                await message.edit(embed=warnings_embeds[current_page])
+                            else:
+                                await message.delete()
+                                break
+                        else:
+                            await ctx.send("You do not have permission to delete warnings.")
+                    elif str(reaction.emoji) == "✅":
+                        # Close the embed
+                        await message.delete()
+                        break
+                    await message.remove_reaction(reaction, user)
         else:
-            await ctx.send('Suggestion channel not found. Please ask the server owner to set it.')
+            await ctx.send(f'{user.mention} has no warnings.')
 
     @commands.group(name="mod_settings")
     async def _mod_settings(self, ctx):
