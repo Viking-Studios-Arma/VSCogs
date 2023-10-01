@@ -128,8 +128,7 @@ class VSMod(commands.Cog):
             return
         await self.config.guild(ctx.guild).actions.muting.set(True)
         await self.config.guild(ctx.guild).thresholds.muting_threshold.set(time)
-        await ctx.send(f'Set muting duration to {time} minutes.')
-
+        await ctx.send(f'Set mute duration to {time} minutes.')
     
     @_settings.command(name="mute_disable")
     async def mute_disable(self, ctx):
@@ -166,6 +165,8 @@ class VSMod(commands.Cog):
             print("Debug: Running 'on_message' listener")
             return
         if message.author.bot:
+            return
+        if message.guild is None:
             return
 
         content = message.content.lower()
