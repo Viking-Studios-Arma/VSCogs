@@ -41,8 +41,7 @@ class VSMod(commands.Cog):
         self.create_muted_role()
 
     async def create_muted_role(self):
-        guild = discord.utils.get(self.bot.guilds, id=self.muted_role_id)
-        if guild:
+        if guild := discord.utils.get(self.bot.guilds, id=self.muted_role_id):
             self.muted_role = discord.utils.get(guild.roles, name="Muted")
             if not self.muted_role:
                 try:
@@ -58,12 +57,10 @@ class VSMod(commands.Cog):
     async def filter_invite_links(self, message):
         if message.guild is None:
             return
-
-        if await self.config.guild(message.guild).actions.invite_link_filter():
-            if "discord.gg/" in message.content:
-                await message.delete()
-                await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
-                await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
+        if await self.config.guild(message.guild).actions.invite_link_filter() and "discord.gg/" in message.content:
+            await message.delete()
+            await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
+            await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
 
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
@@ -71,7 +68,6 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             print("Debug: Running '_banned_words' command")
             return
-        pass
 
     @_banned_words.command()
     async def add(self, ctx, *, words: str):
@@ -112,7 +108,6 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             print("Debug: Running '_settings' sub-command of '_banned_words' command")
             return
-        pass
     
     @_settings.command()
     async def set_warn(self, ctx, threshold: int):
@@ -228,8 +223,9 @@ class VSMod(commands.Cog):
                     await message.author.send('Reason: Used banned words')
 
             if actions['muting'] and self.muted_role_id:
-                muted_role = discord.utils.get(message.guild.roles, id=self.muted_role_id)
-                if muted_role:
+                if muted_role := discord.utils.get(
+                    message.guild.roles, id=self.muted_role_id
+                ):
                     warnings = await self.config.guild(message.guild).warnings()
                     user_warnings = warnings.get(str(message.author.id), [])
                     user_warnings.append("Used banned words")
@@ -241,7 +237,7 @@ class VSMod(commands.Cog):
                     if len(user_warnings) >= muting_threshold:
                         # Send a DM to the user
                         await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
-                        await message.author.send(f'Reason: Used banned words')
+                        await message.author.send('Reason: Used banned words')
 
                         await message.author.add_roles(muted_role)
 
@@ -314,8 +310,7 @@ class VSMod(commands.Cog):
             print(f"Debug: Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
 
-        muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
-        if muted_role:
+        if muted_role := discord.utils.get(ctx.guild.roles, id=self.muted_role_id):
             if time is not None:
                 # Set muting actions, thresholds, and time
                 await self.config.guild(ctx.guild).actions.muting.set(True)
@@ -405,8 +400,7 @@ class VSMod(commands.Cog):
             print(f"Debug: Running 'clear_warnings' command with user {user.name}#{user.discriminator} ({user.id})")
             return
         warnings = await self.config.guild(ctx.guild).warnings()
-        user_warnings = warnings.get(str(user.id), [])
-        if user_warnings:
+        if user_warnings := warnings.get(str(user.id), []):
             warnings[str(user.id)] = []
             await self.config.guild(ctx.guild).warnings.set(warnings)
             await ctx.send(f'Warnings for {user.mention} have been cleared.')
@@ -418,7 +412,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def view_warnings(self, ctx, user: discord.Member = None):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'view_warnings' command")
+            print("Debug: Running 'view_warnings' command")
             return
         if not user:
             user = ctx.author
@@ -448,7 +442,11 @@ class VSMod(commands.Cog):
             await message.add_reaction("✅")  # Checkmark emoji
 
             def check(reaction, user):
-                return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["❌", "✅"]
+                return (
+                    user == ctx.author
+                    and reaction.message.id == message.id
+                    and str(reaction.emoji) in {"❌", "✅"}
+                )
 
             while True:
                 try:
@@ -491,7 +489,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def view_mod_actions(self, ctx):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'view_mod_actions' command")
+            print("Debug: Running 'view_mod_actions' command")
             return
         mod_actions = await self.config.guild(ctx.guild).mod_actions()
         if mod_actions:
@@ -588,7 +586,7 @@ class VSMod(commands.Cog):
     @commands.command()
     async def purge_banned_words(self, ctx):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'purge_banned_words' command")
+            print("Debug: Running 'purge_banned_words' command")
             return
         await self.config.guild(ctx.guild).banned_words.set([])
         await ctx.send("Banned words list has been purged.")
