@@ -227,8 +227,8 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
         await ctx.send(f'Set warning threshold to {threshold}.')
     
-    @_settings.command(name="warn_disable")
-    async def warn_disable(self, ctx, disable: bool):
+    @_settings.command(name="warn_enable")
+    async def warn_enable(self, ctx, disable: bool):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_settings' command")
@@ -237,9 +237,9 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).actions.warning.set(disable)
 
         if disable:
-            await ctx.send('Warning threshold has been disabled.')
-        else:
             await ctx.send('Warning threshold has been enabled.')
+        else:
+            await ctx.send('Warning threshold has been disabled.')
     
     @_settings.command(name="set_mute")
     async def set_mute(self, ctx, threshold: int, time: int):
@@ -255,8 +255,8 @@ class VSMod(commands.Cog):
 
         await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
 
-    @_settings.command(name="mute_disable")
-    async def mute_disable(self, ctx):
+    @_settings.command(name="mute_enable")
+    async def mute_enable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'mute_toggle' sub-command of '_settings' command")
@@ -265,9 +265,9 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).actions.muting.set(not toggle)
 
         if toggle:
-            await ctx.send('Muting threshold has been disabled.')
-        else:
             await ctx.send('Muting threshold has been enabled.')
+        else:
+            await ctx.send('Muting threshold has been disabled.')
     
     @_settings.command()
     async def set_ban(self, ctx, threshold: int):
@@ -279,8 +279,8 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
         await ctx.send(f'Set banning threshold to {threshold}.')
     
-    @_settings.command(name="ban_disable")
-    async def ban_disable(self, ctx):
+    @_settings.command(name="ban_enable")
+    async def ban_enable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'ban_toggle' sub-command of '_settings' command")
@@ -289,9 +289,9 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).actions.banning.set(not toggle)
 
         if toggle:
-            await ctx.send('Banning threshold has been disabled.')
-        else:
             await ctx.send('Banning threshold has been enabled.')
+        else:
+            await ctx.send('Banning threshold has been disabled.')
 
     @_settings.command(name="view")
     async def view_settings(self, ctx):
@@ -469,33 +469,33 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", f"Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
-    
+
         # Check if muted role exists, create one if not
         muted_role = await self.get_muted_role(ctx.guild)
         if muted_role is None:
             await self.create_muted_role(ctx.guild)
             muted_role = await self.get_muted_role(ctx.guild)
-    
+
         # If after creating it's still None, something went wrong, notify the user
         if muted_role is None:
             await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
             return
-    
+
         if time is not None:
             # Set muting actions, thresholds, and time
             await self.config.guild(ctx.guild).actions.muting.set(True)
             await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Change as needed
             await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
-    
+
         await user.add_roles(muted_role)
-    
+
         # Send a DM to the user
         if time is not None:
             await user.send(f'You have been muted in the server {ctx.guild.name} for {time} minutes.')
         else:
             await user.send(f'You have been muted indefinitely in the server {ctx.guild.name}.')
         await user.send(f'Reason: {reason}')
-    
+
         # Log the action
         mod_actions = await self.config.guild(ctx.guild).mod_actions()
         mod_actions.append({
@@ -505,7 +505,7 @@ class VSMod(commands.Cog):
             'reason': reason
         })
         await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
-    
+
         # Mention the user and notify the channel
         if time is not None:
             await ctx.send(f'{user.mention} has been muted for {time} minutes for: {reason}')
