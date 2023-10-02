@@ -103,7 +103,8 @@ class VSMod(commands.Cog):
             if isinstance(error, commands.MissingRequiredArgument):
                 await ctx.send("Please provide the mute duration.")
 
-        if isinstance(error, commands.BadArgument) or isinstance(error, commands.UserInputError):
+        if isinstance(error, commands.UserInputError):
+            await ctx.send("There was an issue with the provided argument. Please check your input and try again.")
         elif isinstance(error, commands.MissingRequiredArgument):
             await ctx.send("Oops! Looks like you're missing a required argument. Please check the command usage with `!help <command>`.")
         elif isinstance(error, commands.BadArgument):
