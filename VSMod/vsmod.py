@@ -58,12 +58,12 @@ class VSMod(commands.Cog):
                     await self.config.muted_role_id.set(self.muted_role_id)
 
     async def debug_log(self, guild, command, message):
-        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self, guild=guild)
+        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/{guild.id}-debug.log"
-        debug_file = open(debug_file_path, 'a')  # Use 'a' mode to append to the file
+        debug_file = open(debug_file_path, 'a') 
 
         debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
-        debug_file.close()  # Close the file after writing
+        debug_file.close()
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
