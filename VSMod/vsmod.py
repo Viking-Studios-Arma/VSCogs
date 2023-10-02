@@ -58,12 +58,11 @@ class VSMod(commands.Cog):
                     await self.config.muted_role_id.set(self.muted_role_id)
 
     async def __unload(self):
-        debug_file.close()
+        self.debug_file.close()
 
     async def debug_log(self, message):
-        if await self.config.guild(self.bot.guilds[0]).enable_debug():
-            self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")  # Changed debug_file to self.debug_file
-            self.debug_file.flush()
+        self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")
+        self.debug_file.flush()
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
@@ -155,6 +154,19 @@ class VSMod(commands.Cog):
             await message.delete()
             await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
             await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
+
+    @commands.is_owner()
+    @commands.command(name="read_debug_log")
+    async def read_debug_log(self, ctx):
+        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
+        debug_file_path = f"{current_directory}/debug.log"
+
+        try:
+            with open(debug_file_path, 'r') as debug_file:
+                log_contents = debug_file.read()
+                await ctx.send(f"Debug Log Contents:\n```{log_contents}```")
+        except FileNotFoundError:
+            await ctx.send("debug.log file not found.")
 
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
