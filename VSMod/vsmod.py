@@ -11,7 +11,7 @@ class VSMod(commands.Cog):
         self.bot = bot
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
-        self.debug_file = open(debug_file_path, 'w')
+        self.debug_file = None
         self.identifier = self.bot.user.id
         self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
         default_guild = {
@@ -58,11 +58,19 @@ class VSMod(commands.Cog):
                     await self.config.muted_role_id.set(self.muted_role_id)
 
     async def __unload(self):
-        self.debug_file.close()
+        if self.debug_file:
+            self.debug_file.close()
 
     async def debug_log(self, message):
-        self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")
-        self.debug_file.flush()
+        try:
+            if not self.debug_file:
+                current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
+                debug_file_path = f"{current_directory}/debug.log"
+                self.debug_file = open(debug_file_path, 'w')
+            self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")
+            self.debug_file.flush()
+        except Exception as e:
+            print(f"Error writing to debug file: {e}")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
