@@ -328,24 +328,33 @@ class VSMod(commands.Cog):
                     await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly using banned words.')
                     await message.author.send('Reason: Used banned words')
 
-            if actions['muting'] and self.muted_role_id:
-                if muted_role := discord.utils.get(
-                    message.guild.roles, id=self.muted_role_id
-                ):
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Used banned words")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
-
-                    muting_threshold = thresholds['muting_threshold']
-
-                    if len(user_warnings) >= muting_threshold:
-                        # Send a DM to the user
-                        await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
-                        await message.author.send('Reason: Used banned words')
-
-                        await message.author.add_roles(muted_role)
+            if actions['muting']:
+                # Check if muted role exists, create one if not
+                muted_role = await self.get_muted_role(message.guild)
+                if muted_role is None:
+                    await self.create_muted_role(message.guild)
+                    muted_role = await self.get_muted_role(message.guild)
+            
+                # If after creating it's still None, something went wrong, log it
+                if muted_role is None:
+                    await self.debug_log(f"Error creating muted role for server {message.guild.name}")
+                    return
+            
+                # Continue with your existing logic
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Used banned words")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+            
+                muting_threshold = thresholds['muting_threshold']
+            
+                if len(user_warnings) >= muting_threshold:
+                    # Send a DM to the user
+                    await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
+                    await message.author.send('Reason: Used banned words')
+            
+                    await message.author.add_roles(muted_role)
 
             # Delete the message and notify the user
             await message.delete()
@@ -413,41 +422,43 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(manage_roles=True)
     async def mute(self, ctx, user: discord.Member, time: int = None, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            await self.debug_log(ctx.guild, "add", f"Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
-
-        if muted_role := discord.utils.get(ctx.guild.roles, id=self.muted_role_id):
-            if time is not None:
-                # Set muting actions, thresholds, and time
-                await self.config.guild(ctx.guild).actions.muting.set(True)
-                await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Change as needed
-                await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
-
-            await user.add_roles(muted_role)
-
-            # Send a DM to the user
-            await user.send(f'You have been muted in the server {ctx.guild.name}.')
-            await user.send(f'Reason: {reason}')
-
-            # Log the action
-            mod_actions = await self.config.guild(ctx.guild).mod_actions()
-            mod_actions.append({
-                'moderator': ctx.author.id,
-                'action': 'mute',
-                'user': user.id,
-                'reason': reason
-            })
-            await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
-
-            await ctx.send(f'{user.mention} has been muted for: {reason}')
-        else:
-            await ctx.send("Muted role not found. Please set up the muted role first.")
-
-    async def unmute_after_time(self, guild, user, time):
-        await asyncio.sleep(time * 60)  # Convert minutes to seconds
-        muted_role = discord.utils.get(guild.roles, id=self.muted_role_id)
-        if muted_role and muted_role in user.roles:
-            await user.remove_roles(muted_role)
+    
+        # Check if muted role exists, create one if not
+        muted_role = await self.get_muted_role(ctx.guild)
+        if muted_role is None:
+            await self.create_muted_role(ctx.guild)
+            muted_role = await self.get_muted_role(ctx.guild)
+    
+        # If after creating it's still None, something went wrong, notify the user
+        if muted_role is None:
+            await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
+            return
+    
+        if time is not None:
+            # Set muting actions, thresholds, and time
+            await self.config.guild(ctx.guild).actions.muting.set(True)
+            await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Change as needed
+            await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
+    
+        await user.add_roles(muted_role)
+    
+        # Send a DM to the user
+        await user.send(f'You have been muted in the server {ctx.guild.name}.')
+        await user.send(f'Reason: {reason}')
+    
+        # Log the action
+        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        mod_actions.append({
+            'moderator': ctx.author.id,
+            'action': 'mute',
+            'user': user.id,
+            'reason': reason
+        })
+        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+    
+        await ctx.send(f'{user.mention} has been muted for: {reason}')
     
     @commands.command()
     @commands.guild_only()
