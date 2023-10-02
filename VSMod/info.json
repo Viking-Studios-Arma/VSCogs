@@ -6,6 +6,8 @@
     "hidden": "false",
     "install_msg": "Thank you for installing VSMod, to get a list of commands use [p]help VSMod",
     "version": "2.0",
-    "author": "Amateur-God"
+    "author": [
+      "Amateur-God"
+    ]
   }
   
