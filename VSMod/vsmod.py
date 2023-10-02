@@ -628,15 +628,6 @@ class VSMod(commands.Cog):
         else:
             await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
 
-    @_mute_settings.command(name="set_duration")
-    async def set_mute_duration(self, ctx, duration: int):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_mute_duration' sub-command of '_mute_settings' command")
-            return
-
-        await self.config.guild(ctx.guild).default_mute_duration.set(duration)
-        await ctx.send(f'Default mute duration set to {duration} minutes.')
-
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
@@ -831,15 +822,44 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('Suggestion channel not found. Please ask the server owner to set it.')
 
-    @commands.group(name="mod_settings")
+    @commands.group(name="settings")
+    async def _settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_settings' command")
+            return
+
+    @_settings.group(name="mod")
     async def _mod_settings(self, ctx):
-        pass
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_mod_settings' command")
+            return
 
-    @commands.group(name="suggestion_settings")
+    @_mod_settings.group(name="mute")
+    async def _mute_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_mute_settings' command")
+            return
+
+    @_mute_settings.command(name="set_duration")
+    async def set_mute_duration(self, ctx, duration: int):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'set_mute_duration' sub-command of '_mute_settings' command")
+            return
+
+        await self.config.guild(ctx.guild).default_mute_duration.set(duration)
+        await ctx.send(f'Default mute duration set to {duration} minutes.')
+
+    @_settings.group(name="suggestion")
     async def _suggestion_settings(self, ctx):
-        pass
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_suggestion_settings' command")
+            return
 
-    @_suggestion_settings.command(name="set_suggestion_channel")
+    @_suggestion_settings.command(name="set_channel")
     async def set_suggestion_channel(self, ctx, channel: discord.TextChannel):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'set_suggestion_channel' command")
@@ -894,15 +914,19 @@ class VSMod(commands.Cog):
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
-    @commands.group(name="enable_debug")
+    @commands.group(name="owner_settings")
+    async def _owner_settings(self, ctx):
+        pass
+
+    @_owner_settings.group(name="enable_debug")
     async def _enable_debug(self, ctx):
         pass
-    
+
     @_enable_debug.command()
     async def true(self, ctx):
         await self.config.guild(ctx.guild).enable_debug.set(True)
         await ctx.send("Debug mode enabled.")
-    
+
     @_enable_debug.command()
     async def false(self, ctx):
         await self.config.guild(ctx.guild).enable_debug.set(False)
