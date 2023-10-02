@@ -217,21 +217,21 @@ class VSMod(commands.Cog):
             await self.debug_log(ctx.guild, "add", "Running '_settings' sub-command of '_banned_words' command")
             return
 
-    @_settings.group(name="warn")
+    @_bw_settings.group(name="warn")
     async def _warn_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_warn_settings' sub-command of '_settings' command")
             return
 
-    @_settings.group(name="mute")
+    @_bw_settings.group(name="mute")
     async def _mute_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_mute_settings' sub-command of '_settings' command")
             return
 
-    @_settings.group(name="ban")
+    @_bw_settings.group(name="ban")
     async def _ban_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
