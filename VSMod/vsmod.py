@@ -168,35 +168,76 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_banned_words' command")
             return
-    
+
+    @_banned_words.command()
+    async def add(self, ctx, *, words: str):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'add' sub-command of '_banned_words' command")
+            return
+        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        banned_words.extend(words)
+        await self.config.guild(ctx.guild).banned_words.set(list(set(banned_words)))  # Remove duplicates
+        await ctx.send(f'Added {", ".join(words)} to the list of banned words.')
+
+    @_banned_words.command()
+    async def remove(self, ctx, *, words: str):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'remove' sub-command of '_banned_words' command")
+            return
+        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        updated_banned_words = [word for word in banned_words if word not in words]
+        await self.config.guild(ctx.guild).banned_words.set(updated_banned_words)
+        await ctx.send(f'Removed {", ".join(words)} from the list of banned words.')
+
+    @_banned_words.command()
+    async def list(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'list' sub-command of '_banned_words' command")
+            return
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        await ctx.send(f'Banned words: {", ".join(banned_words)}')
+
+    @_banned_words.command(name="purge")
+    async def purge_banned_words(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'purge_banned_words' sub-command of '_banned_words' command")
+            return
+        await self.config.guild(ctx.guild).banned_words.set([])
+        await ctx.send("Banned words list has been purged.")
+
     @_banned_words.group(name="settings")
     async def _settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_settings' sub-command of '_banned_words' command")
             return
-    
+
     @_settings.group(name="warn")
     async def _warn_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_warn_settings' sub-command of '_settings' command")
             return
-    
+
     @_settings.group(name="mute")
     async def _mute_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_mute_settings' sub-command of '_settings' command")
             return
-    
+
     @_settings.group(name="ban")
     async def _ban_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_ban_settings' sub-command of '_settings' command")
             return
-    
+
     # Set commands
     @_warn_settings.command(name="set")
     async def set_warn(self, ctx, threshold: int):
@@ -204,38 +245,38 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'set_warn' sub-command of '_warn_settings' command")
             return
-    
+
         # Set warning threshold
         await self.config.guild(ctx.guild).actions.warning.set(True)
         await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
         await ctx.send(f'Set warning threshold to {threshold}.')
-    
+
     @_mute_settings.command(name="set")
     async def set_mute(self, ctx, threshold: int, time: int):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'set_mute' sub-command of '_mute_settings' command")
             return
-    
+
         # Set muting actions and thresholds
         await self.config.guild(ctx.guild).actions.muting.set(True)
         await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
         await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
-    
+
         await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
-    
+
     @_ban_settings.command(name="set")
     async def set_ban(self, ctx, threshold: int):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'set_ban' sub-command of '_ban_settings' command")
             return
-    
+
         # Set banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(True)
         await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
         await ctx.send(f'Set banning threshold to {threshold}.')
-    
+
     # Enable/Disable commands
     @_warn_settings.command(name="enable")
     async def warn_enable(self, ctx):
@@ -243,62 +284,62 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'warn_enable' sub-command of '_warn_settings' command")
             return
-    
+
         # Enable warning threshold
         await self.config.guild(ctx.guild).actions.warning.set(True)
         await ctx.send('Warning threshold has been enabled.')
-    
+
     @_warn_settings.command(name="disable")
     async def warn_disable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_warn_settings' command")
             return
-    
+
         # Disable warning threshold
         await self.config.guild(ctx.guild).actions.warning.set(False)
         await ctx.send('Warning threshold has been disabled.')
-    
+
     @_mute_settings.command(name="enable")
     async def mute_enable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'mute_enable' sub-command of '_mute_settings' command")
             return
-    
+
         # Enable muting threshold
         await self.config.guild(ctx.guild).actions.muting.set(True)
         await ctx.send('Muting threshold has been enabled.')
-    
+
     @_mute_settings.command(name="disable")
     async def mute_disable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'mute_disable' sub-command of '_mute_settings' command")
             return
-    
+
         # Disable muting threshold
         await self.config.guild(ctx.guild).actions.muting.set(False)
         await ctx.send('Muting threshold has been disabled.')
-    
+
     @_ban_settings.command(name="enable")
     async def ban_enable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'ban_enable' sub-command of '_ban_settings' command")
             return
-    
+
         # Enable banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(True)
         await ctx.send('Banning threshold has been enabled.')
-    
+
     @_ban_settings.command(name="disable")
     async def ban_disable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'ban_disable' sub-command of '_ban_settings' command")
             return
-    
+
         # Disable banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(False)
         await ctx.send('Banning threshold has been disabled.')
@@ -586,7 +627,16 @@ class VSMod(commands.Cog):
             await ctx.send(f'{user.mention} has been muted for {time} minutes for: {reason}')
         else:
             await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
-    
+
+    @_mute_settings.command(name="set_duration")
+    async def set_mute_duration(self, ctx, duration: int):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'set_mute_duration' sub-command of '_mute_settings' command")
+            return
+
+        await self.config.guild(ctx.guild).default_mute_duration.set(duration)
+        await ctx.send(f'Default mute duration set to {duration} minutes.')
+
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
@@ -789,15 +839,6 @@ class VSMod(commands.Cog):
     async def _suggestion_settings(self, ctx):
         pass
 
-    @_mod_settings.command(name="set_mute_duration")
-    async def set_mute_duration(self, ctx, duration: int):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_mute_duration' sub-command of '_settings' command")
-            return
-
-        await self.config.guild(ctx.guild).default_mute_duration.set(duration)
-        await ctx.send(f'Default mute duration set to {duration} minutes.')
-
     @_suggestion_settings.command(name="set_suggestion_channel")
     async def set_suggestion_channel(self, ctx, channel: discord.TextChannel):
         if await self.config.guild(ctx.guild).enable_debug():
@@ -849,15 +890,6 @@ class VSMod(commands.Cog):
 
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
-
-    @commands.is_owner()
-    @commands.command()
-    async def purge_banned_words(self, ctx):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'purge_banned_words' command")
-            return
-        await self.config.guild(ctx.guild).banned_words.set([])
-        await ctx.send("Banned words list has been purged.")
     
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
