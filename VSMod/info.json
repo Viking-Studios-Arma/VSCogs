@@ -1,7 +1,7 @@
 {
     "name": "VSMod",
     "description": "A moderation and utility cog for managing warnings, bans, mutes, banned words, invite link blocking and other features like suggestions.",
-    "min_python_version": ["3.11.0"],
+    "min_python_version": [3, 8, 0],
     "end_user_data_statement": "data such as UIDs of server members and Moderators along with GuildID and RoleID may be stored by the cog for keeping track of user warnings, mutes, bans, and offenses",
     "hidden": false,
     "install_msg": "Thank you for installing VSMod,\nTo load the mod use [p]load VSMod. \nTo get a list of commands use [p]help VSMod",
