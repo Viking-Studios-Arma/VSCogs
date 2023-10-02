@@ -238,6 +238,33 @@ class VSMod(commands.Cog):
             await self.debug_log(ctx.guild, "add", "Running '_ban_settings' sub-command of '_settings' command")
             return
 
+    @_bw_settings.command(name="view")
+    async def view_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'view' sub-command of 'settings' command")
+            return
+
+        actions = await self.config.guild(ctx.guild).actions()
+        thresholds = await self.config.guild(ctx.guild).thresholds()
+
+        embed = discord.Embed(
+            title="Banned Words Settings",
+            description="Current settings for banned words in this server",
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(name="Warning Enabled", value=str(actions['warning']))
+        embed.add_field(name="Banning Enabled", value=str(actions['banning']))
+        embed.add_field(name="Muting Enabled", value=str(actions['muting']))
+        embed.add_field(name="Invite Link Filter Enabled", value=str(actions['invite_link_filter']))
+        embed.add_field(name="Warning Threshold", value=str(thresholds['warning_threshold']))
+        embed.add_field(name="Muting Threshold", value=str(thresholds['muting_threshold']))
+        embed.add_field(name="Banning Threshold", value=str(thresholds['banning_threshold']))
+        embed.add_field(name="Muting Time (minutes)", value=str(thresholds['muting_time']))
+
+        await ctx.send(embed=embed)
+
     # Set commands
     @_warn_settings.command(name="set")
     async def set_warn(self, ctx, threshold: int):
@@ -343,33 +370,6 @@ class VSMod(commands.Cog):
         # Disable banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(False)
         await ctx.send('Banning threshold has been disabled.')
-
-    @_settings.command(name="view")
-    async def view_settings(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'view' sub-command of 'settings' command")
-            return
-
-        actions = await self.config.guild(ctx.guild).actions()
-        thresholds = await self.config.guild(ctx.guild).thresholds()
-
-        embed = discord.Embed(
-            title="Banned Words Settings",
-            description="Current settings for banned words in this server",
-            color=discord.Color.blue()
-        )
-
-        embed.add_field(name="Warning Enabled", value=str(actions['warning']))
-        embed.add_field(name="Banning Enabled", value=str(actions['banning']))
-        embed.add_field(name="Muting Enabled", value=str(actions['muting']))
-        embed.add_field(name="Invite Link Filter Enabled", value=str(actions['invite_link_filter']))
-        embed.add_field(name="Warning Threshold", value=str(thresholds['warning_threshold']))
-        embed.add_field(name="Muting Threshold", value=str(thresholds['muting_threshold']))
-        embed.add_field(name="Banning Threshold", value=str(thresholds['banning_threshold']))
-        embed.add_field(name="Muting Time (minutes)", value=str(thresholds['muting_time']))
-
-        await ctx.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_message(self, message):
