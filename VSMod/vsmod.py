@@ -667,8 +667,19 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).banned_words.set([])
         await ctx.send("Banned words list has been purged.")
     
-    @commands.is_owner()
-    @commands.command()
-    async def enable_debug(self, ctx, enable: bool):
-        await self.config.guild(ctx.guild).enable_debug.set(enable)
-        await ctx.send(f'Debug mode has been {"enabled" if enable else "disabled"}.')
+    @commands.guild_only()
+    @commands.bot_has_permissions(manage_guild=True)
+    @commands.has_permissions(manage_guild=True)
+    @commands.group()
+    async def _enable_debug(self, ctx):
+        pass
+    
+    @_enable_debug.command()
+    async def true(self, ctx):
+        await self.config.guild(ctx.guild).enable_debug.set(True)
+        await ctx.send("Debug mode enabled.")
+    
+    @_enable_debug.command()
+    async def false(self, ctx):
+        await self.config.guild(ctx.guild).enable_debug.set(False)
+        await ctx.send("Debug mode disabled.")
