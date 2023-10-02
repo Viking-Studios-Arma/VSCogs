@@ -149,14 +149,6 @@ class VSMod(commands.Cog):
             # Handle any other specific errors here, or provide a generic error message
             await ctx.send("An error occurred while processing the command. Please try again later.")
 
-    async def filter_invite_links(self, message):
-        if message.guild is None or message.author.bot:
-            return
-        if await self.config.guild(message.guild).actions.invite_link_filter() and "discord.gg/" in message.content:
-            await message.delete()
-            await message.author.send(f"You cannot send Discord invite links in this server {message.guild.name}.")
-            await message.channel.send(f'{message.author.mention}, your message has been removed for containing an invite link.')
-
     @commands.is_owner()
     @commands.command(name="read_debug_log")
     async def read_debug_log(self, ctx):
@@ -176,40 +168,7 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_banned_words' command")
             return
-
-    @_banned_words.command()
-    async def add(self, ctx, *, words: str):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'add' sub-command of '_banned_words' command")
-            return
-        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
-        banned_words = await self.config.guild(ctx.guild).banned_words()
-        banned_words.extend(words)
-        await self.config.guild(ctx.guild).banned_words.set(list(set(banned_words)))  # Remove duplicates
-        await ctx.send(f'Added {", ".join(words)} to the list of banned words.')
-
-    @_banned_words.command()
-    async def remove(self, ctx, *, words: str):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'remove' sub-command of '_banned_words' command")
-            return
-        words = [word.strip().lower() for word in words.replace(" ", "").split(",")]
-        banned_words = await self.config.guild(ctx.guild).banned_words()
-        updated_banned_words = [word for word in banned_words if word not in words]
-        await self.config.guild(ctx.guild).banned_words.set(updated_banned_words)
-        await ctx.send(f'Removed {", ".join(words)} from the list of banned words.')
-
-    @_banned_words.command()
-    async def list(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'list' sub-command of '_banned_words' command")
-            return
-        banned_words = await self.config.guild(ctx.guild).banned_words()
-        await ctx.send(f'Banned words: {", ".join(banned_words)}')
-
+    
     @_banned_words.group(name="settings")
     async def _settings(self, ctx):
         # Add debug statement
@@ -217,81 +176,132 @@ class VSMod(commands.Cog):
             await self.debug_log(ctx.guild, "add", "Running '_settings' sub-command of '_banned_words' command")
             return
     
-    @_settings.command()
+    @_settings.group(name="warn")
+    async def _warn_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_warn_settings' sub-command of '_settings' command")
+            return
+    
+    @_settings.group(name="mute")
+    async def _mute_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_mute_settings' sub-command of '_settings' command")
+            return
+    
+    @_settings.group(name="ban")
+    async def _ban_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_ban_settings' sub-command of '_settings' command")
+            return
+    
+    # Set commands
+    @_warn_settings.command(name="set")
     async def set_warn(self, ctx, threshold: int):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'warn' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'set_warn' sub-command of '_warn_settings' command")
             return
+    
+        # Set warning threshold
         await self.config.guild(ctx.guild).actions.warning.set(True)
         await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
         await ctx.send(f'Set warning threshold to {threshold}.')
     
-    @_settings.command(name="warn_enable")
-    async def warn_enable(self, ctx, disable: bool):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_settings' command")
-            return
-
-        await self.config.guild(ctx.guild).actions.warning.set(disable)
-
-        if disable:
-            await ctx.send('Warning threshold has been enabled.')
-        else:
-            await ctx.send('Warning threshold has been disabled.')
-    
-    @_settings.command(name="set_mute")
+    @_mute_settings.command(name="set")
     async def set_mute(self, ctx, threshold: int, time: int):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_mute' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'set_mute' sub-command of '_mute_settings' command")
             return
-
+    
         # Set muting actions and thresholds
         await self.config.guild(ctx.guild).actions.muting.set(True)
         await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
         await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
-
-        await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
-
-    @_settings.command(name="mute_enable")
-    async def mute_enable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'mute_toggle' sub-command of '_settings' command")
-            return
-
-        await self.config.guild(ctx.guild).actions.muting.set(not toggle)
-
-        if toggle:
-            await ctx.send('Muting threshold has been enabled.')
-        else:
-            await ctx.send('Muting threshold has been disabled.')
     
-    @_settings.command()
+        await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
+    
+    @_ban_settings.command(name="set")
     async def set_ban(self, ctx, threshold: int):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'ban' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'set_ban' sub-command of '_ban_settings' command")
             return
+    
+        # Set banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(True)
         await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
         await ctx.send(f'Set banning threshold to {threshold}.')
     
-    @_settings.command(name="ban_enable")
+    # Enable/Disable commands
+    @_warn_settings.command(name="enable")
+    async def warn_enable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'warn_enable' sub-command of '_warn_settings' command")
+            return
+    
+        # Enable warning threshold
+        await self.config.guild(ctx.guild).actions.warning.set(True)
+        await ctx.send('Warning threshold has been enabled.')
+    
+    @_warn_settings.command(name="disable")
+    async def warn_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_warn_settings' command")
+            return
+    
+        # Disable warning threshold
+        await self.config.guild(ctx.guild).actions.warning.set(False)
+        await ctx.send('Warning threshold has been disabled.')
+    
+    @_mute_settings.command(name="enable")
+    async def mute_enable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'mute_enable' sub-command of '_mute_settings' command")
+            return
+    
+        # Enable muting threshold
+        await self.config.guild(ctx.guild).actions.muting.set(True)
+        await ctx.send('Muting threshold has been enabled.')
+    
+    @_mute_settings.command(name="disable")
+    async def mute_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'mute_disable' sub-command of '_mute_settings' command")
+            return
+    
+        # Disable muting threshold
+        await self.config.guild(ctx.guild).actions.muting.set(False)
+        await ctx.send('Muting threshold has been disabled.')
+    
+    @_ban_settings.command(name="enable")
     async def ban_enable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'ban_toggle' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'ban_enable' sub-command of '_ban_settings' command")
             return
-
-        await self.config.guild(ctx.guild).actions.banning.set(not toggle)
-
-        if toggle:
-            await ctx.send('Banning threshold has been enabled.')
-        else:
-            await ctx.send('Banning threshold has been disabled.')
+    
+        # Enable banning threshold
+        await self.config.guild(ctx.guild).actions.banning.set(True)
+        await ctx.send('Banning threshold has been enabled.')
+    
+    @_ban_settings.command(name="disable")
+    async def ban_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'ban_disable' sub-command of '_ban_settings' command")
+            return
+    
+        # Disable banning threshold
+        await self.config.guild(ctx.guild).actions.banning.set(False)
+        await ctx.send('Banning threshold has been disabled.')
 
     @_settings.command(name="view")
     async def view_settings(self, ctx):
@@ -405,8 +415,73 @@ class VSMod(commands.Cog):
                 await message.author.send(f"Your message has been removed from {message.guild.name} for containing a banned word.")
                 await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
 
-        # Invite link Filter
-        await self.filter_invite_links(message)
+        # Invite Link Filter
+        if await self.config.guild(message.guild).actions.invite_link_filter():
+            if await self.contains_invite_link(message.content):
+                actions = await self.config.guild(message.guild).actions()
+                thresholds = await self.config.guild(message.guild).thresholds()
+    
+                if actions['warning']:
+                    warnings = await self.config.guild(message.guild).warnings()
+                    user_warnings = warnings.get(str(message.author.id), [])
+                    user_warnings.append("Sent an invite link")
+                    warnings[str(message.author.id)] = user_warnings
+                    await self.config.guild(message.guild).warnings.set(warnings)
+    
+                    warning_threshold = thresholds['warning_threshold']
+    
+                    if len(user_warnings) >= warning_threshold:
+                        await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
+                        await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
+                        await message.author.send('Reason: Sent an invite link')
+    
+                if actions['banning']:
+                    warnings = await self.config.guild(message.guild).warnings()
+                    user_warnings = warnings.get(str(message.author.id), [])
+                    user_warnings.append("Sent an invite link")
+                    warnings[str(message.author.id)] = user_warnings
+                    await self.config.guild(message.guild).warnings.set(warnings)
+    
+                    banning_threshold = thresholds['banning_threshold']
+    
+                    if len(user_warnings) >= banning_threshold:
+                        await message.author.ban(reason='Sent an invite link.')
+                        await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
+                        await message.author.send('Reason: Sent an invite link.')
+    
+                if actions['muting']:
+                    muted_role = await self.get_muted_role(message.guild)
+                    if muted_role is None:
+                        await self.create_muted_role(message.guild)
+                        muted_role = await self.get_muted_role(message.guild)
+    
+                    if muted_role is None:
+                        await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
+                        return
+    
+                    warnings = await self.config.guild(message.guild).warnings()
+                    user_warnings = warnings.get(str(message.author.id), [])
+                    user_warnings.append("Sent an invite link")
+                    warnings[str(message.author.id)] = user_warnings
+                    await self.config.guild(message.guild).warnings.set(warnings)
+    
+                    muting_threshold = thresholds['muting_threshold']
+    
+                    if len(user_warnings) >= muting_threshold:
+                        await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
+                        await message.author.send('Reason: Sent an invite link.')
+                        await message.author.add_roles(muted_role)
+    
+                        muting_time = thresholds['muting_time']
+    
+                        await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
+                        await message.author.remove_roles(muted_role)
+                        await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
+    
+                await message.delete()
+                await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
+                await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
+    
 
     @commands.command()
     @commands.guild_only()
@@ -756,22 +831,22 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'invite_filter' command")
             return
-    
+
     @_invite_filter.command(name="enable")
     async def enable_invite_filter(self, ctx):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'enable' sub-command of 'invite_filter' command")
             return
-        
+
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(True)
         await ctx.send('Invite link filter has been enabled.')
-    
+
     @_invite_filter.command(name="disable")
     async def disable_invite_filter(self, ctx):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'disable' sub-command of 'invite_filter' command")
             return
-        
+
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
 
