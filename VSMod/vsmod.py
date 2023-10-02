@@ -734,6 +734,22 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
+    @commands.command()
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
+    async def clean(self, ctx, num_messages: int):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", f"Running 'clean' command to delete {num_messages} messages")
+            return
+        
+        # Ensure the number of messages to delete is within a reasonable range
+        if 1 <= num_messages <= 100:
+            # Delete the specified number of messages
+            deleted_messages = await ctx.channel.purge(limit=num_messages+1)
+            await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
+        else:
+            await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
+
     @commands.is_owner()
     @commands.command()
     async def purge_banned_words(self, ctx):
