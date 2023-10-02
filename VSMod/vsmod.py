@@ -6,13 +6,12 @@ import os
 import datetime
 import logging
 
-current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
-debug_file_path = f"{current_directory}/debug.log"
-debug_file = open(debug_file_path, 'w')
-
 class VSMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
+        debug_file_path = f"{current_directory}/debug.log"
+        debug_file = open(debug_file_path, 'w')
         self.identifier = self.bot.user.id
         self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
         default_guild = {
