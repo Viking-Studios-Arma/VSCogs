@@ -5,6 +5,7 @@ import random
 import os
 import datetime
 import logging
+import traceback
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
@@ -67,7 +68,7 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        await self.debug_log(f"Error: {error} occurred in command '{ctx.command.name}'")
+        traceback.print_exc()
         if isinstance(error, commands.CommandNotFound):
             await ctx.send("Sorry, I couldn't find that command. Use `!help` for a list of available commands.")
         if ctx.command.name == 'add':
