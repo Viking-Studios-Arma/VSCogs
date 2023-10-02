@@ -16,6 +16,7 @@ class VSMod(commands.Cog):
         self.identifier = self.bot.user.id
         self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
         default_guild = {
+            'muted_role_id': None
             'banned_words': [],
             'actions': {
                 'warning': False,
@@ -37,26 +38,37 @@ class VSMod(commands.Cog):
         }
         self.config.register_guild(**default_guild)
 
-        self.muted_role = discord.utils.get(guild.roles, name="Muted")
-        self.muted_role_id = None
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if not member.roles:
+            if not self.muted_role:
+                await self.create_muted_role(member.guild)
+
+            try:
+                await member.add_roles(self.muted_role)
+            except Exception as e:
+                await ctx.send(f"Error assigning muted role to {member}: {e}")
 
     async def cog_before_invoke(self, ctx):
-        if not self.muted_role_id:
-            await self.create_muted_role()
+        if not await self.get_muted_role(ctx.guild):
+            await self.create_muted_role(ctx.guild)
 
-    async def create_muted_role(self):
-        if guild := discord.utils.get(self.bot.guilds, id=self.muted_role_id):
-            self.muted_role = discord.utils.get(guild.roles, name="Muted")
-            if not self.muted_role:
-                try:
-                    self.muted_role = await guild.create_role(name="Muted")
-                    for channel in guild.channels:
-                        await channel.set_permissions(self.muted_role, send_messages=False, connect=False)
-                except Exception as e:
-                    await self.debug_log(f"Error creating muted role: {e}")
-                else:
-                    self.muted_role_id = self.muted_role.id
-                    await self.config.muted_role_id.set(self.muted_role_id)
+    async def get_muted_role(self, guild):
+        muted_role_id = await self.config.guild(guild).muted_role_id()
+        if muted_role_id:
+            return discord.utils.get(guild.roles, id=muted_role_id)
+        return None
+
+    async def create_muted_role(self, guild):
+        muted_role = discord.utils.get(guild.roles, name="Muted")
+        if not muted_role:
+            try:
+                muted_role = await guild.create_role(name="Muted")
+                for channel in guild.channels:
+                    await channel.set_permissions(muted_role, send_messages=False)
+                await self.config.guild(guild).muted_role_id.set(muted_role.id)
+            except Exception as e:
+                print(f"Error creating muted role: {e}")
 
     async def debug_log(self, guild, command, message):
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
