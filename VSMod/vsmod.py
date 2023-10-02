@@ -285,9 +285,9 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'ban_toggle' sub-command of '_settings' command")
             return
-        
+
         await self.config.guild(ctx.guild).actions.banning.set(not toggle)
-        
+
         if toggle:
             await ctx.send('Banning threshold has been disabled.')
         else:
@@ -490,7 +490,10 @@ class VSMod(commands.Cog):
         await user.add_roles(muted_role)
     
         # Send a DM to the user
-        await user.send(f'You have been muted in the server {ctx.guild.name}.')
+        if time is not None:
+            await user.send(f'You have been muted in the server {ctx.guild.name} for {time} minutes.')
+        else:
+            await user.send(f'You have been muted indefinitely in the server {ctx.guild.name}.')
         await user.send(f'Reason: {reason}')
     
         # Log the action
@@ -503,7 +506,11 @@ class VSMod(commands.Cog):
         })
         await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
     
-        await ctx.send(f'{user.mention} has been muted for: {reason}')
+        # Mention the user and notify the channel
+        if time is not None:
+            await ctx.send(f'{user.mention} has been muted for {time} minutes for: {reason}')
+        else:
+            await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
     
     @commands.command()
     @commands.guild_only()
