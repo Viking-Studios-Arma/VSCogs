@@ -670,7 +670,7 @@ class VSMod(commands.Cog):
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
-    @commands.group()
+    @commands.group(name="enable_debug")
     async def _enable_debug(self, ctx):
         pass
     
