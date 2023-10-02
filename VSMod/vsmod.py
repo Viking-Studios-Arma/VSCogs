@@ -11,7 +11,7 @@ class VSMod(commands.Cog):
         self.bot = bot
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
-        debug_file = open(debug_file_path, 'w')
+        self.debug_file = open(debug_file_path, 'w')
         self.identifier = self.bot.user.id
         self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
         default_guild = {
@@ -62,8 +62,8 @@ class VSMod(commands.Cog):
 
     async def debug_log(self, message):
         if await self.config.guild(self.bot.guilds[0]).enable_debug():
-            debug_file.write(f"{datetime.datetime.now()} - {message}\n")
-            debug_file.flush()
+            self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")  # Changed debug_file to self.debug_file
+            self.debug_file.flush()
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
