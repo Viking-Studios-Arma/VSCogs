@@ -741,7 +741,7 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", f"Running 'clean' command to delete {num_messages} messages")
             return
-        
+
         # Ensure the number of messages to delete is within a reasonable range
         if 1 <= num_messages <= 100:
             # Delete the specified number of messages
@@ -749,6 +749,31 @@ class VSMod(commands.Cog):
             await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
         else:
             await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
+
+    @commands.group(name="invite_filter")
+    async def _invite_filter(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'invite_filter' command")
+            return
+    
+    @_invite_filter.command(name="enable")
+    async def enable_invite_filter(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'enable' sub-command of 'invite_filter' command")
+            return
+        
+        await self.config.guild(ctx.guild).actions.invite_link_filter.set(True)
+        await ctx.send('Invite link filter has been enabled.')
+    
+    @_invite_filter.command(name="disable")
+    async def disable_invite_filter(self, ctx):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'disable' sub-command of 'invite_filter' command")
+            return
+        
+        await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
+        await ctx.send('Invite link filter has been disabled.')
 
     @commands.is_owner()
     @commands.command()
