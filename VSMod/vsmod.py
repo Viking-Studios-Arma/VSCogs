@@ -369,7 +369,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def warn(self, ctx, user: discord.Member, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'warn' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            await self.debug_log("add", "Running  'warn' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
         warnings = await self.config.guild(ctx.guild).warnings()
         user_warnings = warnings.get(str(user.id), [])
@@ -398,7 +398,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def kick(self, ctx, user: discord.Member, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'kick' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            await self.debug_log("add", "Running  'kick' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
         await user.kick(reason=reason)
 
@@ -423,7 +423,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(manage_roles=True)
     async def mute(self, ctx, user: discord.Member, time: int = None, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            await self.debug_log("add", "Running  'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
 
         if muted_role := discord.utils.get(ctx.guild.roles, id=self.muted_role_id):
@@ -464,7 +464,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def ban(self, ctx, user: discord.Member, *, reason: str):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'ban' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+            await self.debug_log("add", "Running  'ban' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
         await user.ban(reason=reason)
 
@@ -489,7 +489,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx, user: discord.Member):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
+            await self.debug_log("add", "Running  'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
             return
         muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
         if muted_role and muted_role in user.roles:
@@ -503,7 +503,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def unban(self, ctx, user: discord.User):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'unban' command with user {user.name}#{user.discriminator} ({user.id})")
+            await self.debug_log("add", "Running  'unban' command with user {user.name}#{user.discriminator} ({user.id})")
             return
         await ctx.guild.unban(user)
         await ctx.send(f'{user.mention} has been unbanned.')
@@ -513,7 +513,7 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(ban_members=True)
     async def clear_warnings(self, ctx, user: discord.Member):
         if await self.config.guild(ctx.guild).enable_debug():
-            print(f"Debug: Running 'clear_warnings' command with user {user.name}#{user.discriminator} ({user.id})")
+            await self.debug_log("add", "Running  'clear_warnings' command with user {user.name}#{user.discriminator} ({user.id})")
             return
         warnings = await self.config.guild(ctx.guild).warnings()
         if user_warnings := warnings.get(str(user.id), []):
