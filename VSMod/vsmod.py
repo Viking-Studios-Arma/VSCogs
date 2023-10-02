@@ -37,7 +37,7 @@ class VSMod(commands.Cog):
         }
         self.config.register_guild(**default_guild)
 
-        self.muted_role = "Muted"
+        self.muted_role = discord.utils.get(guild.roles, name="Muted")
         self.muted_role_id = None
 
     async def cog_before_invoke(self, ctx):
