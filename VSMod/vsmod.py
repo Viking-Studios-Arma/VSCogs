@@ -228,13 +228,18 @@ class VSMod(commands.Cog):
         await ctx.send(f'Set warning threshold to {threshold}.')
     
     @_settings.command(name="warn_disable")
-    async def warn_disable(self, ctx):
+    async def warn_disable(self, ctx, disable: bool):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_settings' command")
             return
-        await self.config.guild(ctx.guild).actions.warning.set(False)
-        await ctx.send('Warning threshold has been disabled.')
+
+        await self.config.guild(ctx.guild).actions.warning.set(disable)
+
+        if disable:
+            await ctx.send('Warning threshold has been disabled.')
+        else:
+            await ctx.send('Warning threshold has been enabled.')
     
     @_settings.command(name="set_mute")
     async def set_mute(self, ctx, threshold: int, time: int):
@@ -254,10 +259,15 @@ class VSMod(commands.Cog):
     async def mute_disable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'mute_disable' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'mute_toggle' sub-command of '_settings' command")
             return
-        await self.config.guild(ctx.guild).actions.muting.set(False)
-        await ctx.send('Muting threshold has been disabled.')
+
+        await self.config.guild(ctx.guild).actions.muting.set(not toggle)
+
+        if toggle:
+            await ctx.send('Muting threshold has been disabled.')
+        else:
+            await ctx.send('Muting threshold has been enabled.')
     
     @_settings.command()
     async def set_ban(self, ctx, threshold: int):
@@ -273,10 +283,15 @@ class VSMod(commands.Cog):
     async def ban_disable(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'ban_disable' sub-command of '_settings' command")
+            await self.debug_log(ctx.guild, "add", "Running 'ban_toggle' sub-command of '_settings' command")
             return
-        await self.config.guild(ctx.guild).actions.banning.set(False)
-        await ctx.send('Banning threshold has been disabled.')
+        
+        await self.config.guild(ctx.guild).actions.banning.set(not toggle)
+        
+        if toggle:
+            await ctx.send('Banning threshold has been disabled.')
+        else:
+            await ctx.send('Banning threshold has been enabled.')
 
     @_settings.command(name="view")
     async def view_settings(self, ctx):
@@ -361,30 +376,30 @@ class VSMod(commands.Cog):
                 if muted_role is None:
                     await self.create_muted_role(message.guild)
                     muted_role = await self.get_muted_role(message.guild)
-    
+
                 # If after creating it's still None, something went wrong, log it
                 if muted_role is None:
                     await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
                     return
-    
+
                 warnings = await self.config.guild(message.guild).warnings()
                 user_warnings = warnings.get(str(message.author.id), [])
                 user_warnings.append("Used banned words")
                 warnings[str(message.author.id)] = user_warnings
                 await self.config.guild(message.guild).warnings.set(warnings)
-    
+
                 muting_threshold = thresholds['muting_threshold']
-    
+
                 if len(user_warnings) >= muting_threshold:
                     # Calculate the mute duration (in minutes)
                     mute_duration = thresholds['muting_time']
-                    
+
                     # Send a DM to the user with the mute duration
                     await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words for {mute_duration} minutes.')
                     await message.author.send('Reason: Used banned words')
-    
+
                     await message.author.add_roles(muted_role)
-    
+
                 # Delete the message and notify the user
                 await message.delete()
                 await message.author.send(f"Your message has been removed from {message.guild.name} for containing a banned word.")
