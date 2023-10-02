@@ -490,9 +490,20 @@ class VSMod(commands.Cog):
     @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx, user: discord.Member):
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
+            await self.debug_log(ctx.guild, "add", f"Running 'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
             return
-        muted_role = discord.utils.get(ctx.guild.roles, id=self.muted_role_id)
+    
+        # Check if muted role exists, create one if not
+        muted_role = await self.get_muted_role(ctx.guild)
+        if muted_role is None:
+            await self.create_muted_role(ctx.guild)
+            muted_role = await self.get_muted_role(ctx.guild)
+    
+        # If after creating it's still None, something went wrong, notify the user
+        if muted_role is None:
+            await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
+            return
+    
         if muted_role and muted_role in user.roles:
             await user.remove_roles(muted_role)
             await ctx.send(f'{user.mention} has been unmuted.')
