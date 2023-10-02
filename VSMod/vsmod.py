@@ -68,7 +68,6 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        traceback.print_exc()
         if isinstance(error, commands.CommandNotFound):
             await ctx.send("Sorry, I couldn't find that command. Use `!help` for a list of available commands.")
         if ctx.command.name == 'add':
