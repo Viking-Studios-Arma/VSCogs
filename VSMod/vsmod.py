@@ -38,17 +38,6 @@ class VSMod(commands.Cog):
         }
         self.config.register_guild(**default_guild)
 
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        if not member.roles:
-            if not self.muted_role:
-                await self.create_muted_role(member.guild)
-
-            try:
-                await member.add_roles(self.muted_role)
-            except Exception as e:
-                await ctx.send(f"Error assigning muted role to {member}: {e}")
-
     async def cog_before_invoke(self, ctx):
         if not await self.get_muted_role(ctx.guild):
             await self.create_muted_role(ctx.guild)
