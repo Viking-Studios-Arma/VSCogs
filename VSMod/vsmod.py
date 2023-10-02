@@ -160,12 +160,12 @@ class VSMod(commands.Cog):
     @commands.command(name="read_debug_log")
     async def read_debug_log(self, ctx):
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
-        debug_file_path = f"{current_directory}/debug.log"
-
+        debug_file_path = f"{current_directory}/{ctx.guild.id}-debug.log"
+    
         try:
             with open(debug_file_path, 'r') as debug_file:
                 log_contents = debug_file.read()
-                await ctx.send(f"Debug Log Contents:\n```{log_contents}```")
+                await ctx.send(f"Debug Log Contents for {ctx.guild.name}:\n```{log_contents}```")
         except FileNotFoundError:
             await ctx.send("debug.log file not found.")
 
