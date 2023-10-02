@@ -211,7 +211,7 @@ class VSMod(commands.Cog):
         await ctx.send("Banned words list has been purged.")
 
     @_banned_words.group(name="settings")
-    async def _settings(self, ctx):
+    async def _bw_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running '_settings' sub-command of '_banned_words' command")
