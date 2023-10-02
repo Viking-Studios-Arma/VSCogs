@@ -278,6 +278,33 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).actions.banning.set(False)
         await ctx.send('Banning threshold has been disabled.')
 
+    @_settings.command(name="view")
+    async def view_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'view' sub-command of 'settings' command")
+            return
+
+        actions = await self.config.guild(ctx.guild).actions()
+        thresholds = await self.config.guild(ctx.guild).thresholds()
+
+        embed = discord.Embed(
+            title="Banned Words Settings",
+            description="Current settings for banned words in this server",
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(name="Warning Enabled", value=str(actions['warning']))
+        embed.add_field(name="Banning Enabled", value=str(actions['banning']))
+        embed.add_field(name="Muting Enabled", value=str(actions['muting']))
+        embed.add_field(name="Invite Link Filter Enabled", value=str(actions['invite_link_filter']))
+        embed.add_field(name="Warning Threshold", value=str(thresholds['warning_threshold']))
+        embed.add_field(name="Muting Threshold", value=str(thresholds['muting_threshold']))
+        embed.add_field(name="Banning Threshold", value=str(thresholds['banning_threshold']))
+        embed.add_field(name="Muting Time (minutes)", value=str(thresholds['muting_time']))
+
+        await ctx.send(embed=embed)
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.guild is None or message.author.bot:
@@ -334,33 +361,36 @@ class VSMod(commands.Cog):
                 if muted_role is None:
                     await self.create_muted_role(message.guild)
                     muted_role = await self.get_muted_role(message.guild)
-            
+    
                 # If after creating it's still None, something went wrong, log it
                 if muted_role is None:
-                    await self.debug_log(f"Error creating muted role for server {message.guild.name}")
+                    await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
                     return
-            
-                # Continue with your existing logic
+    
                 warnings = await self.config.guild(message.guild).warnings()
                 user_warnings = warnings.get(str(message.author.id), [])
                 user_warnings.append("Used banned words")
                 warnings[str(message.author.id)] = user_warnings
                 await self.config.guild(message.guild).warnings.set(warnings)
-            
+    
                 muting_threshold = thresholds['muting_threshold']
-            
+    
                 if len(user_warnings) >= muting_threshold:
-                    # Send a DM to the user
-                    await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words.')
+                    # Calculate the mute duration (in minutes)
+                    mute_duration = thresholds['muting_time']
+                    
+                    # Send a DM to the user with the mute duration
+                    await message.author.send(f'You have been muted in the server {message.guild.name} for using banned words for {mute_duration} minutes.')
                     await message.author.send('Reason: Used banned words')
-            
+    
                     await message.author.add_roles(muted_role)
+    
+                # Delete the message and notify the user
+                await message.delete()
+                await message.author.send(f"Your message has been removed from {message.guild.name} for containing a banned word.")
+                await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
 
-            # Delete the message and notify the user
-            await message.delete()
-            await message.author.send(f"Your message has been removed from {message.guild.name} for containing a banned word.")
-            await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
-        #Invite link Filter
+        # Invite link Filter
         await self.filter_invite_links(message)
 
     @commands.command()
