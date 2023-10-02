@@ -16,7 +16,7 @@ class VSMod(commands.Cog):
         self.identifier = self.bot.user.id
         self.config = Config.get_conf(self, identifier=self.identifier, force_registration=True)
         default_guild = {
-            'muted_role_id': None
+            'muted_role_id': None,
             'banned_words': [],
             'actions': {
                 'warning': False,
