@@ -67,7 +67,11 @@ class VSMod(commands.Cog):
                 current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
                 debug_file_path = f"{current_directory}/debug.log"
                 self.debug_file = open(debug_file_path, 'w')
-            self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")
+
+            if message:
+                self.debug_file.write(f"{datetime.datetime.now()} - {message}\n")
+            else:
+                self.debug_file.write(f"{datetime.datetime.now()} - Message is empty\n")
             self.debug_file.flush()
         except Exception as e:
             print(f"Error writing to debug file: {e}")
