@@ -38,7 +38,24 @@ class VSMod(commands.Cog):
 
         self.muted_role = None
         self.muted_role_id = None
-        self.create_muted_role()
+
+    async def cog_before_invoke(self, ctx):
+        if not self.muted_role_id:
+            await self.create_muted_role()
+
+    async def create_muted_role(self):
+        if guild := discord.utils.get(self.bot.guilds, id=self.muted_role_id):
+            self.muted_role = discord.utils.get(guild.roles, name="Muted (By VSMod)")
+            if not self.muted_role:
+                try:
+                    self.muted_role = await guild.create_role(name="Muted (By VSMod)")
+                    for channel in guild.channels:
+                        await channel.set_permissions(self.muted_role, send_messages=False, connect=False)
+                except Exception as e:
+                    await self.debug_log(f"Error creating muted role: {e}")
+                else:
+                    self.muted_role_id = self.muted_role.id
+                    await self.config.muted_role_id.set(self.muted_role_id)
 
     async def __unload(self):
         debug_file.close()
@@ -130,20 +147,6 @@ class VSMod(commands.Cog):
         else:
             # Handle any other specific errors here, or provide a generic error message
             await ctx.send("An error occurred while processing the command. Please try again later.")
-
-    async def create_muted_role(self):
-        if guild := discord.utils.get(self.bot.guilds, id=self.muted_role_id):
-            self.muted_role = discord.utils.get(guild.roles, name="Muted")
-            if not self.muted_role:
-                try:
-                    self.muted_role = await guild.create_role(name="Muted")
-                    for channel in guild.channels:
-                        await channel.set_permissions(self.muted_role, send_messages=False)
-                except Exception as e:
-                    await self.debug_log(f"Error creating muted role: {e}")
-                else:
-                    self.muted_role_id = self.muted_role.id
-                    await self.config.muted_role_id.set(self.muted_role_id)
 
     async def filter_invite_links(self, message):
         if message.guild is None or message.author.bot:
