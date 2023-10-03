@@ -149,19 +149,6 @@ class VSMod(commands.Cog):
             # Handle any other specific errors here, or provide a generic error message
             await ctx.send("An error occurred while processing the command. Please try again later.")
 
-    @commands.is_owner()
-    @commands.command(name="read_debug_log")
-    async def read_debug_log(self, ctx):
-        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
-        debug_file_path = f"{current_directory}/{ctx.guild.id}-debug.log"
-    
-        try:
-            with open(debug_file_path, 'r') as debug_file:
-                log_contents = debug_file.read()
-                await ctx.send(f"Debug Log Contents for {ctx.guild.name}:\n```{log_contents}```")
-        except FileNotFoundError:
-            await ctx.send("debug.log file not found.")
-
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
         # Add debug statement
@@ -211,141 +198,14 @@ class VSMod(commands.Cog):
         await ctx.send("Banned words list has been purged.")
 
     @_banned_words.group(name="settings")
-    async def _bwsettings(self, ctx):
+    async def _bw_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running '_bwsettings' sub-command of '_banned_words' command")
+            await self.debug_log(ctx.guild, "add", "Running '_bw_settings' sub-command of '_banned_words' command")
             return
 
-    @_bwsettings.group(name="warn")
-    async def _warn_bwsettings(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running '_warn_bwsettings' sub-command of '_bwsettings' command")
-            return
-
-    @_bwsettings.group(name="mute")
-    async def _mute_bwsettings(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running '_mute_bwsettings' sub-command of '_bwsettings' command")
-            return
-
-    @_bwsettings.group(name="ban")
-    async def _ban_bwsettings(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running '_ban_bwsettings' sub-command of '_bwsettings' command")
-            return
-
-    # Set commands
-    @_warn_bwsettings.command(name="set")
-    async def set_warn(self, ctx, threshold: int):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_warn' sub-command of '_warn_bwsettings' command")
-            return
-
-        # Set warning threshold
-        await self.config.guild(ctx.guild).actions.warning.set(True)
-        await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
-        await ctx.send(f'Set warning threshold to {threshold}.')
-
-    @_mute_bwsettings.command(name="set")
-    async def set_mute(self, ctx, threshold: int, time: int):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_mute' sub-command of '_mute_bwsettings' command")
-            return
-
-        # Set muting actions and thresholds
-        await self.config.guild(ctx.guild).actions.muting.set(True)
-        await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
-        await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
-
-        await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
-
-    @_ban_bwsettings.command(name="set")
-    async def set_ban(self, ctx, threshold: int):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'set_ban' sub-command of '_ban_bwsettings' command")
-            return
-
-        # Set banning threshold
-        await self.config.guild(ctx.guild).actions.banning.set(True)
-        await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
-        await ctx.send(f'Set banning threshold to {threshold}.')
-
-    # Enable/Disable commands
-    @_warn_bwsettings.command(name="enable")
-    async def warn_enable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'warn_enable' sub-command of '_warn_bwsettings' command")
-            return
-
-        # Enable warning threshold
-        await self.config.guild(ctx.guild).actions.warning.set(True)
-        await ctx.send('Warning threshold has been enabled.')
-
-    @_warn_bwsettings.command(name="disable")
-    async def warn_disable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_warn_bwsettings' command")
-            return
-
-        # Disable warning threshold
-        await self.config.guild(ctx.guild).actions.warning.set(False)
-        await ctx.send('Warning threshold has been disabled.')
-
-    @_mute_bwsettings.command(name="enable")
-    async def mute_enable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'mute_enable' sub-command of '_mute_bwsettings' command")
-            return
-
-        # Enable muting threshold
-        await self.config.guild(ctx.guild).actions.muting.set(True)
-        await ctx.send('Muting threshold has been enabled.')
-
-    @_mute_bwsettings.command(name="disable")
-    async def mute_disable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'mute_disable' sub-command of '_mute_bwsettings' command")
-            return
-
-        # Disable muting threshold
-        await self.config.guild(ctx.guild).actions.muting.set(False)
-        await ctx.send('Muting threshold has been disabled.')
-
-    @_ban_bwsettings.command(name="enable")
-    async def ban_enable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'ban_enable' sub-command of '_ban_bwsettings' command")
-            return
-
-        # Enable banning threshold
-        await self.config.guild(ctx.guild).actions.banning.set(True)
-        await ctx.send('Banning threshold has been enabled.')
-
-    @_ban_bwsettings.command(name="disable")
-    async def ban_disable(self, ctx):
-        # Add debug statement
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'ban_disable' sub-command of '_ban_bwsettings' command")
-            return
-
-        # Disable banning threshold
-        await self.config.guild(ctx.guild).actions.banning.set(False)
-        await ctx.send('Banning threshold has been disabled.')
-
-    @_bwsettings.command(name="view")
-    async def view_bwsettings(self, ctx):
+    @_bw_settings.command(name="view")
+    async def view_bw_settings(self, ctx):
         # Add debug statement
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'view' sub-command of 'settings' command")
@@ -370,6 +230,133 @@ class VSMod(commands.Cog):
         embed.add_field(name="Muting Time (minutes)", value=str(thresholds['muting_time']))
 
         await ctx.send(embed=embed)
+
+    @_bw_settings.group(name="warn")
+    async def _warn_bw_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_warn_bw_settings' sub-command of '_bw_settings' command")
+            return
+
+    @_bw_settings.group(name="mute")
+    async def _mute_bw_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_mute_bw_settings' sub-command of '_bw_settings' command")
+            return
+
+    @_bw_settings.group(name="ban")
+    async def _ban_bw_settings(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running '_ban_bw_settings' sub-command of '_bw_settings' command")
+            return
+
+    # Set commands
+    @_warn_bw_settings.command(name="set")
+    async def set_warn(self, ctx, threshold: int):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'set_warn' sub-command of '_warn_bw_settings' command")
+            return
+
+        # Set warning threshold
+        await self.config.guild(ctx.guild).actions.warning.set(True)
+        await self.config.guild(ctx.guild).thresholds.warning_threshold.set(threshold)
+        await ctx.send(f'Set warning threshold to {threshold}.')
+
+    @_mute_bw_settings.command(name="set")
+    async def set_mute(self, ctx, threshold: int, time: int):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'set_mute' sub-command of '_mute_bw_settings' command")
+            return
+
+        # Set muting actions and thresholds
+        await self.config.guild(ctx.guild).actions.muting.set(True)
+        await self.config.guild(ctx.guild).thresholds.muting_threshold.set(threshold)
+        await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
+
+        await ctx.send(f'Set mute threshold to {threshold} warnings and mute duration to {time} minutes.')
+
+    @_ban_bw_settings.command(name="set")
+    async def set_ban(self, ctx, threshold: int):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'set_ban' sub-command of '_ban_bw_settings' command")
+            return
+
+        # Set banning threshold
+        await self.config.guild(ctx.guild).actions.banning.set(True)
+        await self.config.guild(ctx.guild).thresholds.banning_threshold.set(threshold)
+        await ctx.send(f'Set banning threshold to {threshold}.')
+
+    # Enable/Disable commands
+    @_warn_bw_settings.command(name="enable")
+    async def warn_enable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'warn_enable' sub-command of '_warn_bw_settings' command")
+            return
+
+        # Enable warning threshold
+        await self.config.guild(ctx.guild).actions.warning.set(True)
+        await ctx.send('Warning threshold has been enabled.')
+
+    @_warn_bw_settings.command(name="disable")
+    async def warn_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'warn_disable' sub-command of '_warn_bw_settings' command")
+            return
+
+        # Disable warning threshold
+        await self.config.guild(ctx.guild).actions.warning.set(False)
+        await ctx.send('Warning threshold has been disabled.')
+
+    @_mute_bw_settings.command(name="enable")
+    async def mute_enable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'mute_enable' sub-command of '_mute_bw_settings' command")
+            return
+
+        # Enable muting threshold
+        await self.config.guild(ctx.guild).actions.muting.set(True)
+        await ctx.send('Muting threshold has been enabled.')
+
+    @_mute_bw_settings.command(name="disable")
+    async def mute_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'mute_disable' sub-command of '_mute_bw_settings' command")
+            return
+
+        # Disable muting threshold
+        await self.config.guild(ctx.guild).actions.muting.set(False)
+        await ctx.send('Muting threshold has been disabled.')
+
+    @_ban_bw_settings.command(name="enable")
+    async def ban_enable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'ban_enable' sub-command of '_ban_bw_settings' command")
+            return
+
+        # Enable banning threshold
+        await self.config.guild(ctx.guild).actions.banning.set(True)
+        await ctx.send('Banning threshold has been enabled.')
+
+    @_ban_bw_settings.command(name="disable")
+    async def ban_disable(self, ctx):
+        # Add debug statement
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'ban_disable' sub-command of '_ban_bw_settings' command")
+            return
+
+        # Disable banning threshold
+        await self.config.guild(ctx.guild).actions.banning.set(False)
+        await ctx.send('Banning threshold has been disabled.')
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -931,3 +918,15 @@ class VSMod(commands.Cog):
     async def false(self, ctx):
         await self.config.guild(ctx.guild).enable_debug.set(False)
         await ctx.send("Debug mode disabled.")
+
+    @_owner_settings.command(name="read_debug_log")
+    async def read_debug_log(self, ctx):
+        current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
+        debug_file_path = f"{current_directory}/{ctx.guild.id}-debug.log"
+
+        try:
+            with open(debug_file_path, 'r') as debug_file:
+                log_contents = debug_file.read()
+                await ctx.send(f"Debug Log Contents for {ctx.guild.name}:\n```{log_contents}```")
+        except FileNotFoundError:
+            await ctx.send("debug.log file not found.")
