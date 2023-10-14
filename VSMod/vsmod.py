@@ -35,8 +35,10 @@ class VSMod(commands.Cog):
             'default_mute_duration': 5,
             'enable_debug': False,  # Added enable_debug option
             'suggestion_channel_id': None 
+            'reminders': {}
         }
         self.config.register_guild(**default_guild)
+        self.reminders = self.config.guild().get('reminders', {})
 
     async def cog_before_invoke(self, ctx):
         if not await self.get_muted_role(ctx.guild):
@@ -897,7 +899,38 @@ class VSMod(commands.Cog):
 
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
-    
+    @commands.command()
+    async def remindme(self, ctx, time, *, reminder):
+        try:
+            time = self.parse_time(time)
+            await ctx.send(f"I will remind you in {time} seconds.")
+            await asyncio.sleep(time)
+            await ctx.send(f"Reminder: {reminder}")
+            self.reminders[ctx.author.id] = (reminder, time)
+            await self.config.guild(ctx.guild).reminders.set(self.reminders)  # Save reminders
+        except ValueError:
+            await ctx.send("Please provide a valid time format (e.g., 5m, 2h, 3d).")
+
+    @commands.command()
+    async def listreminders(self, ctx):
+        reminders = self.reminders.get(ctx.author.id)
+        if reminders:
+            await ctx.send(f"Your reminders: {reminders}")
+        else:
+            await ctx.send("You have no saved reminders.")
+
+    def parse_time(self, time_str):
+        unit = time_str[-1]
+        value = int(time_str[:-1])
+        if unit == 'm':
+            return value * 60
+        elif unit == 'h':
+            return value * 3600
+        elif unit == 'd':
+            return value * 86400
+        else:
+            raise ValueError()
+
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
