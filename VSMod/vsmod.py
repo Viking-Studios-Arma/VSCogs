@@ -8,7 +8,7 @@ import logging
 import traceback
 
 class VSMod(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot, other_attributes):
         self.bot = bot
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
@@ -357,6 +357,9 @@ class VSMod(commands.Cog):
         # Disable banning threshold
         await self.config.guild(ctx.guild).actions.banning.set(False)
         await ctx.send('Banning threshold has been disabled.')
+
+    async def contains_invite_link(self, input_string):
+        return "discord.gg" in input_string
 
     @commands.Cog.listener()
     async def on_message(self, message):
