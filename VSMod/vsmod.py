@@ -759,20 +759,34 @@ class VSMod(commands.Cog):
                         if current_page > 0:
                             current_page -= 1
                             await message.edit(embed=warnings_embeds[current_page])
-                    elif str(reaction.emoji) == "❌":
-                        # Delete the warning if user is a moderator
-                        if ctx.author.guild_permissions.ban_members:
-                            user_warnings.pop(current_page-1)  # Subtract 1 to account for the instructions page
-                            warnings[str(user.id)] = user_warnings
-                            await self.config.guild(ctx.guild).warnings.set(warnings)
-                            if len(user_warnings) > 0:
-                                current_page = min(current_page, len(user_warnings))
-                                await message.edit(embed=warnings_embeds[current_page])
+                        elif str(reaction.emoji) == "❌":
+                            # Delete the warning if the user is a moderator
+                            if ctx.author.guild_permissions.ban_members:
+                                user_warnings.pop(current_page - 1)  # Subtract 1 to account for the instructions page
+                                warnings[str(user.id)] = user_warnings
+                        
+                                # Update the warnings_embeds list
+                                warnings_embeds = [instructions_embed]
+                                for idx, reason in enumerate(user_warnings, start=1):
+                                    embed = discord.Embed(
+                                        title=f'Warning {idx}',
+                                        description=f'User: {user.mention}\nModerator: {ctx.author.mention}\nReason: {reason}',
+                                        color=discord.Color.orange()
+                                    )
+                                    embed.set_footer(text=f'Page {idx}/{len(user_warnings)}')
+                                    warnings_embeds.append(embed)
+                        
+                                await self.config.guild(ctx.guild).warnings.set(warnings)
+                        
+                                if len(user_warnings) > 0:
+                                    current_page = min(current_page, len(user_warnings))
+                                    await message.edit(embed=warnings_embeds[current_page])
+                                else:
+                                    await message.delete()
+                                    break
                             else:
-                                await message.delete()
-                                break
-                        else:
-                            await ctx.send("You do not have permission to delete warnings.")
+                                await ctx.send("You do not have permission to delete warnings.")
+
                     elif str(reaction.emoji) == "✅":
                         # Close the embed
                         await message.delete()
