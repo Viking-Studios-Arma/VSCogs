@@ -10,6 +10,7 @@ import traceback
 class VSMod(commands.Cog):
     def __init__(self, bot, other_attributes):
         self.bot = bot
+        self.other_attributes = other_attributes
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
         self.debug_file = None
