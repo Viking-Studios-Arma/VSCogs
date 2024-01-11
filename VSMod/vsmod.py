@@ -449,6 +449,7 @@ class VSMod(commands.Cog):
         # Invite Link Filter
         if await self.config.guild(message.guild).actions.invite_link_filter():
             if await self.contains_invite_link(message.content):
+                print("Detected invite link in message:", message.content)  # Debug print
                 actions = await self.config.guild(message.guild).actions()
                 thresholds = await self.config.guild(message.guild).thresholds()
     
@@ -509,10 +510,24 @@ class VSMod(commands.Cog):
                         await message.author.remove_roles(muted_role)
                         await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
     
-                await message.delete()
-                await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
-                await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
-    
+                    try:
+                        await message.delete()
+                        print(f"Deleted message from {message.author} containing an invite link")  # Debug print
+                    except discord.Forbidden:
+                        print("Bot doesn't have permission to delete messages.")  # Debug print
+            
+                    try:
+                        await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
+                        print("Sent DM to the user")  # Debug print
+                    except discord.Forbidden:
+                        print("Bot can't send DMs to the user.")  # Debug print
+            
+                    try:
+                        await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
+                        print("Sent message to the channel")  # Debug print
+                    except discord.Forbidden:
+                        print("Bot can't send messages to the channel.")  # Debug print
+
 
     @commands.command()
     @commands.guild_only()
@@ -759,12 +774,14 @@ class VSMod(commands.Cog):
                         if current_page > 0:
                             current_page -= 1
                             await message.edit(embed=warnings_embeds[current_page])
-                        elif str(reaction.emoji) == "❌":
-                            # Delete the warning if the user is a moderator
-                            if ctx.author.guild_permissions.ban_members:
-                                user_warnings.pop(current_page - 1)  # Subtract 1 to account for the instructions page
+                    elif str(reaction.emoji) == "❌":
+                        # Delete the warning if the user is a moderator
+                        if ctx.author.guild_permissions.ban_members:
+                            # Ensure the current_page is a valid index
+                            if 0 <= current_page - 1 < len(user_warnings):
+                                deleted_warning = user_warnings.pop(current_page - 1)
                                 warnings[str(user.id)] = user_warnings
-                        
+
                                 # Update the warnings_embeds list
                                 warnings_embeds = [instructions_embed]
                                 for idx, reason in enumerate(user_warnings, start=1):
@@ -775,18 +792,20 @@ class VSMod(commands.Cog):
                                     )
                                     embed.set_footer(text=f'Page {idx}/{len(user_warnings)}')
                                     warnings_embeds.append(embed)
-                        
+
                                 await self.config.guild(ctx.guild).warnings.set(warnings)
-                        
+
                                 if len(user_warnings) > 0:
                                     current_page = min(current_page, len(user_warnings))
                                     await message.edit(embed=warnings_embeds[current_page])
                                 else:
                                     await message.delete()
                                     break
+                                
                             else:
-                                await ctx.send("You do not have permission to delete warnings.")
-
+                                await ctx.send("Invalid page index.")
+                        else:
+                            await ctx.send("You do not have permission to delete warnings.")
                     elif str(reaction.emoji) == "✅":
                         # Close the embed
                         await message.delete()
