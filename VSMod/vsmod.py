@@ -369,15 +369,16 @@ class VSMod(commands.Cog):
         if await self.config.guild(message.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", "Running 'on_message' listener")
             return
-
+        
         content = message.content.lower()
-
+        content_words = content.split()
+        
         if content.startswith("!banned_words add") or content.startswith("!banned_words remove"):
             return
 
         banned_words = await self.config.guild(message.guild).banned_words()
 
-        if any(word in content for word in banned_words):
+        if any(word in content_words for word in banned_words):
             actions = await self.config.guild(message.guild).actions()
             thresholds = await self.config.guild(message.guild).thresholds()
 
