@@ -149,6 +149,9 @@ class VSMod(commands.Cog):
             # Handle any other specific errors here, or provide a generic error message
             await ctx.send("An error occurred while processing the command. Please try again later.")
 
+    @commands.guild_only()
+    @commands.bot_has_permissions(manage_messages=True)
+    @commands.has_permissions(manage_messages=True)
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
         # Add debug statement
@@ -371,13 +374,14 @@ class VSMod(commands.Cog):
             return
 
         content = message.content.lower()
+        content_words = content.split()
 
         if content.startswith("!banned_words add") or content.startswith("!banned_words remove"):
             return
 
         banned_words = await self.config.guild(message.guild).banned_words()
 
-        if any(word in content for word in banned_words):
+        if any(word in content_words for word in banned_words):
             actions = await self.config.guild(message.guild).actions()
             thresholds = await self.config.guild(message.guild).thresholds()
 
@@ -845,6 +849,9 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('Suggestion channel not found. Please ask the server owner to set it.')
 
+    @commands.guild_only()
+    @commands.bot_has_permissions(manage_guild=True)
+    @commands.has_permissions(manage_guild=True)
     @commands.group(name="settings")
     async def _settings(self, ctx):
         # Add debug statement
@@ -908,7 +915,9 @@ class VSMod(commands.Cog):
             await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
         else:
             await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
-
+    
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
     @commands.group(name="invite_filter")
     async def _invite_filter(self, ctx):
         # Add debug statement
