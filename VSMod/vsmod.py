@@ -150,8 +150,8 @@ class VSMod(commands.Cog):
             await ctx.send("An error occurred while processing the command. Please try again later.")
 
     @commands.guild_only()
-    @commands.bot_has_permissions(manage_messages=True)
-    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_guild=True)
+    @commands.has_permissions(manage_guild=True)
     @commands.group(name="banned_words")
     async def _banned_words(self, ctx):
         # Add debug statement
@@ -778,15 +778,12 @@ class VSMod(commands.Cog):
                         if current_page > 0:
                             current_page -= 1
                             await message.edit(embed=warnings_embeds[current_page])
-                    elif str(reaction.emoji) == "❌":
-                        # Delete the warning if the user is a moderator
+                    elif str(reaction.emoji) == "\u274c":
                         if ctx.author.guild_permissions.ban_members:
-                            # Ensure the current_page is a valid index
                             if 0 <= current_page - 1 < len(user_warnings):
                                 deleted_warning = user_warnings.pop(current_page - 1)
                                 warnings[str(user.id)] = user_warnings
 
-                                # Update the warnings_embeds list
                                 warnings_embeds = [instructions_embed]
                                 for idx, reason in enumerate(user_warnings, start=1):
                                     embed = discord.Embed(
@@ -803,9 +800,11 @@ class VSMod(commands.Cog):
                                     current_page = min(current_page, len(user_warnings))
                                     await message.edit(embed=warnings_embeds[current_page])
                                 else:
-                                    await message.delete()
+                                    try:
+                                        await message.delete()
+                                    except discord.NotFound:
+                                        pass
                                     break
-                                
                             else:
                                 await ctx.send("Invalid page index.")
                         else:
@@ -917,7 +916,8 @@ class VSMod(commands.Cog):
             await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
     
     @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
+    @commands.bot_has_permissions(manage_guild=True)
+    @commands.has_permissions(manage_guild=True)
     @commands.group(name="invite_filter")
     async def _invite_filter(self, ctx):
         # Add debug statement
