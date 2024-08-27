@@ -9,13 +9,11 @@ import logging
 import traceback
 import requests
 import asyncio
-from discord_slash import SlashCommand, SlashContext # type: ignore
-from discord_slash.utils.manage_commands import create_option, create_choice # type: ignore
+from discord import app_commands # type: ignore
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.slash = SlashCommand(bot, sync_commands=True)
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
         self.debug_file = None
@@ -543,15 +541,20 @@ class VSMod(commands.Cog):
                     print("Bot can't send messages to the channel.")
                     print("Bot can't send messages to the channel.")
 
-    async def handle_warn(self, ctx, user: discord.Member, reason: str):
-        warnings = await self.config.guild(ctx.guild).warnings()
+    async def handle_warn(self, interaction_or_ctx, user: discord.Member, reason: str):
+        guild = interaction_or_ctx.guild
+        warnings = await self.config.guild(guild).warnings()
         user_warnings = warnings.get(str(user.id), [])
         user_warnings.append(reason)
         warnings[str(user.id)] = user_warnings
-        await self.config.guild(ctx.guild).warnings.set(warnings)
+        await self.config.guild(guild).warnings.set(warnings)
 
-        await user.send(f'You have received a warning in the server {ctx.guild.name}. Reason: {reason}')
-        await ctx.send(f'{user.mention} has been warned for: {reason}')
+        await user.send(f'You have received a warning in the server {guild.name}. Reason: {reason}')
+
+        if isinstance(interaction_or_ctx, commands.Context):
+            await interaction_or_ctx.send(f'{user.mention} has been warned for: {reason}')
+        else:
+            await interaction_or_ctx.response.send_message(f'{user.mention} has been warned for: {reason}', ephemeral=True)
 
     @commands.command(name="warn")
     @commands.guild_only()
@@ -559,107 +562,85 @@ class VSMod(commands.Cog):
     async def warn_command(self, ctx, user: discord.Member, *, reason: str):
         await self.handle_warn(ctx, user, reason)
 
-    @slash.slash( # type: ignore
-        name="warn",
-        description="Warn a member for a specified reason",
-        options=[
-            create_option(
-                name="user",
-                description="The member to warn",
-                option_type=6,  # User type
-                required=True
-            ),
-            create_option(
-                name="reason",
-                description="The reason for warning the user",
-                option_type=3,  # String type
-                required=True
-            ),
-        ],
-    )
-    async def warn_slash(self, ctx: SlashContext, user: discord.Member, reason: str):
-        await self.handle_warn(ctx, user, reason)
+    @app_commands.command(name="warn", description="Warn a member for a specified reason")
+    @app_commands.describe(user="The member to warn", reason="The reason for warning the user")
+    async def warn_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+        await self.handle_warn(interaction, user, reason)
 
-
-    @slash.slash( # type: ignore
-        name="kick",
-        description="Kick a member for a specified reason",
-        options=[
-            create_option(
-                name="user",
-                description="The member to kick",
-                option_type=6,  # User type
-                required=True
-            ),
-            create_option(
-                name="reason",
-                description="The reason for kicking the user",
-                option_type=3,  # String type
-                required=True
-            ),
-        ],
-    )
-    @commands.command()
-    @commands.guild_only()
-    @checks.mod_or_permissions(ban_members=True)
-    async def kick(self, ctx, user: discord.Member, *, reason: str):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'kick' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
+    async def handle_kick(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+        if await self.config.guild(interaction.guild).enable_debug():
+            await self.debug_log(interaction.guild, "kick", f"Running 'kick' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
             return
         await user.kick(reason=reason)
 
         # Send a DM to the user
-        await user.send(f'You have been Kicked from the server {ctx.guild.name}.')
-        await user.send(f'Reason: {reason}')
+        try:
+            await user.send(f'You have been kicked from the server {interaction.guild.name}. Reason: {reason}')
+        except discord.Forbidden:
+            await interaction.response.send_message(f'Could not send a DM to {user.mention}.')
 
         # Log the action
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        mod_actions = await self.config.guild(interaction.guild).mod_actions()
         mod_actions.append({
-            'moderator': ctx.author.id,
+            'moderator': interaction.user.id,
             'action': 'kick',
             'user': user.id,
             'reason': reason
         })
-        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+        await self.config.guild(interaction.guild).mod_actions.set(mod_actions)
 
-        await ctx.send(f'{user.mention} has been kicked for: {reason}')
+        await interaction.response.send_message(f'{user.mention} has been kicked for: {reason}')
 
-    async def handle_mute(self, ctx, user: discord.Member, time: int, reason: str):
-        muted_role = await self.get_muted_role(ctx.guild)
+    @commands.command(name="kick")
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    async def kick_command(self, ctx, user: discord.Member, *, reason: str):
+        await self.handle_kick(ctx, user, reason)
+
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    @app_commands.command(name="kick", description="Kick a member for a specified reason")
+    @app_commands.describe(user="The member to kick", reason="The reason for kicking the user")
+    async def kick_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+        await self.handle_kick(interaction, user, reason)
+
+    async def handle_mute(self, interaction: discord.Interaction, user: discord.Member, time: int, reason: str):
+        muted_role = await self.get_muted_role(interaction.guild)
         if muted_role is None:
-            await self.create_muted_role(ctx.guild)
-            muted_role = await self.get_muted_role(ctx.guild)
+            await self.create_muted_role(interaction.guild)
+            muted_role = await self.get_muted_role(interaction.guild)
 
         if muted_role is None:
-            await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
+            await interaction.response.send_message("Error creating muted role. Please check the bot's permissions and try again.")
             return
 
         if time is not None:
-            await self.config.guild(ctx.guild).actions.muting.set(True)
-            await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Adjust as needed
-            await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
+            await self.config.guild(interaction.guild).actions.muting.set(True)
+            await self.config.guild(interaction.guild).thresholds.muting_threshold.set(1)  # Adjust as needed
+            await self.config.guild(interaction.guild).thresholds.muting_time.set(time)
 
         await user.add_roles(muted_role)
 
-        if time is not None:
-            await user.send(f'You have been muted in the server {ctx.guild.name} for {time} minutes.')
-        else:
-            await user.send(f'You have been muted indefinitely in the server {ctx.guild.name}.')
-        await user.send(f'Reason: {reason}')
-
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
+        try:
+            if time is not None:
+                await user.send(f'You have been muted in the server {interaction.guild.name} for {time} minutes. Reason: {reason}')
+            else:
+                await user.send(f'You have been muted indefinitely in the server {interaction.guild.name}. Reason: {reason}')
+        except discord.Forbidden:
+            await interaction.response.send_message(f'Could not send a DM to {user.mention}.')
+        mod_actions = await self.config.guild(interaction.guild).mod_actions()
         mod_actions.append({
-            'moderator': ctx.author.id,
+            'moderator': interaction.user.id,
             'action': 'mute',
             'user': user.id,
             'reason': reason
         })
-        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
+        await self.config.guild(interaction.guild).mod_actions.set(mod_actions)
 
         if time is not None:
-            await ctx.send(f'{user.mention} has been muted for {time} minutes for: {reason}')
+            await interaction.response.send_message(f'{user.mention} has been muted for {time} minutes for: {reason}')
         else:
-            await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
+            await interaction.response.send_message(f'{user.mention} has been muted indefinitely for: {reason}')
 
     @commands.command(name="mute")
     @commands.guild_only()
@@ -667,39 +648,20 @@ class VSMod(commands.Cog):
     async def mute_command(self, ctx, user: discord.Member, time: int = None, *, reason: str):
         await self.handle_mute(ctx, user, time, reason)
 
-    @slash.slash( # type: ignore
-        name="mute",
-        description="Mute a member for a specified time and reason",
-        options=[
-            create_option(
-                name="user",
-                description="The member to mute",
-                option_type=6,  # User type
-                required=True
-            ),
-            create_option(
-                name="reason",
-                description="The reason for muting the user",
-                option_type=3,  # String type
-                required=True
-            ),
-            create_option(
-                name="time",
-                description="Duration to mute the user (in minutes, optional)",
-                option_type=4,  # Integer
-                required=False
-            ),
-        ],
-    )
-    async def mute_slash(self, ctx: SlashContext, user: discord.Member, reason: str, time: int = None):
-        await self.handle_mute(ctx, user, time, reason)
+    @commands.guild_only()
+    @commands.has_permissions(manage_roles=True)
+    @app_commands.command(name="mute", description="Mute a member for a specified time and reason")
+    @app_commands.describe(user="The member to mute", reason="The reason for muting the user", time="Duration to mute the user (in minutes, optional)")
+    async def mute_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str, time: int = None):
+        await self.handle_mute(interaction, user, time, reason)
 
-
-
-    async def handle_ban(self, ctx, user: discord.Member, reason: str):
+    async def handle_ban(self, interaction: discord.Interaction, user: discord.Member, reason: str):
         await user.ban(reason=reason)
-        await user.send(f'You have been banned from the server {ctx.guild.name}. Reason: {reason}')
-        await ctx.send(f'{user.mention} has been banned for: {reason}')
+        try:
+            await user.send(f'You have been banned from the server {interaction.guild.name}. Reason: {reason}')
+        except discord.Forbidden:
+            await interaction.response.send_message(f'Could not send a DM to {user.mention}.')
+        await interaction.response.send_message(f'{user.mention} has been banned for: {reason}')
 
     @commands.command(name="ban")
     @commands.guild_only()
@@ -707,42 +669,29 @@ class VSMod(commands.Cog):
     async def ban_command(self, ctx, user: discord.Member, *, reason: str):
         await self.handle_ban(ctx, user, reason)
 
-    @slash.slash( # type: ignore
-        name="ban",
-        description="Ban a member for a specified reason",
-        options=[
-            create_option(
-                name="user",
-                description="The member to ban",
-                option_type=6,  # User type
-                required=True
-            ),
-            create_option(
-                name="reason",
-                description="The reason for banning the user",
-                option_type=3,  # String type
-                required=True
-            ),
-        ],
-    )
-    async def ban_slash(self, ctx: SlashContext, user: discord.Member, reason: str):
-        await self.handle_ban(ctx, user, reason)
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    @app_commands.command(name="ban", description="Ban a member for a specified reason")
+    @app_commands.describe(user="The member to ban", reason="The reason for banning the user")
+    async def ban_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+        await self.handle_ban(interaction, user, reason)
 
-    async def handle_unmute(self, ctx, user: discord.Member):
-        muted_role = await self.get_muted_role(ctx.guild)
+
+    async def handle_unmute(self, interaction: discord.Interaction, user: discord.Member):
+        muted_role = await self.get_muted_role(interaction.guild)
         if muted_role is None:
-            await self.create_muted_role(ctx.guild)
-            muted_role = await self.get_muted_role(ctx.guild)
+            await self.create_muted_role(interaction.guild)
+            muted_role = await self.get_muted_role(interaction.guild)
 
         if muted_role is None:
-            await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
+            await interaction.response.send_message("Error creating muted role. Please check the bot's permissions and try again.")
             return
 
         if muted_role and muted_role in user.roles:
             await user.remove_roles(muted_role)
-            await ctx.send(f'{user.mention} has been unmuted.')
+            await interaction.response.send_message(f'{user.mention} has been unmuted.')
         else:
-            await ctx.send(f'{user.mention} is not muted.')
+            await interaction.response.send_message(f'{user.mention} is not muted.')
 
     @commands.command(name="unmute")
     @commands.guild_only()
@@ -750,25 +699,16 @@ class VSMod(commands.Cog):
     async def unmute_command(self, ctx, user: discord.Member):
         await self.handle_unmute(ctx, user)
 
-    @slash.slash( # type: ignore
-        name="unmute",
-        description="Unmute a member",
-        options=[
-            create_option(
-                name="user",
-                description="The member to unmute",
-                option_type=6,  # User type
-                required=True
-            ),
-        ],
-    )
-    async def unmute_slash(self, ctx: SlashContext, user: discord.Member):
-        await self.handle_unmute(ctx, user)
+    @commands.guild_only()
+    @commands.has_permissions(manage_roles=True)
+    @app_commands.command(name="unmute", description="Unmute a member")
+    @app_commands.describe(user="The member to unmute")
+    async def unmute_slash(self, interaction: discord.Interaction, user: discord.Member):
+        await self.handle_unmute(interaction, user)
 
-
-    async def handle_unban(self, ctx, user: discord.User):
-        await ctx.guild.unban(user)
-        await ctx.send(f'{user.mention} has been unbanned.')
+    async def handle_unban(self, interaction: discord.Interaction, user: discord.User):
+        await interaction.guild.unban(user)
+        await interaction.response.send_message(f'{user.mention} has been unbanned.')
 
     @commands.command(name="unban")
     @commands.guild_only()
@@ -776,21 +716,12 @@ class VSMod(commands.Cog):
     async def unban_command(self, ctx, user: discord.User):
         await self.handle_unban(ctx, user)
 
-    @slash.slash( # type: ignore
-        name="unban",
-        description="Unban a member",
-        options=[
-            create_option(
-                name="user",
-                description="The user to unban",
-                option_type=3,  # String type (Discord User ID or mention)
-                required=True
-            ),
-        ],
-    )
-    async def unban_slash(self, ctx: SlashContext, user: discord.User):
-        await self.handle_unban(ctx, user)
-
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    @app_commands.command(name="unban", description="Unban a member")
+    @app_commands.describe(user="The user to unban")
+    async def unban_slash(self, interaction: discord.Interaction, user: discord.User):
+        await self.handle_unban(interaction, user)
 
     @commands.command()
     @commands.guild_only()
@@ -992,13 +923,18 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
-
-    async def handle_clean(self, ctx, num_messages: int):
+    async def handle_clean(self, interaction_or_ctx, num_messages: int):
         if 1 <= num_messages <= 100:
-            deleted_messages = await ctx.channel.purge(limit=num_messages + 1)
-            await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
+            channel = interaction_or_ctx.channel
+            deleted_messages = await channel.purge(limit=num_messages + 1)
+            if isinstance(interaction_or_ctx, commands.Context):
+                await interaction_or_ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
+            else:
+                await interaction_or_ctx.response.send_message(f"Deleted {len(deleted_messages)} message(s).", ephemeral=True)
+        elif isinstance(interaction_or_ctx, commands.Context):
+            await interaction_or_ctx.send("Please provide a number between 1 and 100.", delete_after=5)
         else:
-            await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
+            await interaction_or_ctx.response.send_message("Please provide a number between 1 and 100.", ephemeral=True)
 
     @commands.command(name="clean", aliases=["purge"])
     @commands.guild_only()
@@ -1006,20 +942,10 @@ class VSMod(commands.Cog):
     async def clean_command(self, ctx, num_messages: int):
         await self.handle_clean(ctx, num_messages)
 
-    @slash.slash( # type: ignore
-        name="clean",
-        description="Clean a specified number of messages from the channel",
-        options=[
-            create_option(
-                name="num_messages",
-                description="Number of messages to delete (1-100)",
-                option_type=4,  # Integer
-                required=True
-            )
-        ],
-    )
-    async def clean_slash(self, ctx: SlashContext, num_messages: int):
-        await self.handle_clean(ctx, num_messages)
+    @app_commands.command(name="clean", description="Clean a specified number of messages from the channel")
+    @app_commands.describe(num_messages="Number of messages to delete (1-100)")
+    async def clean_slash(self, interaction: discord.Interaction, num_messages: int):
+        await self.handle_clean(interaction, num_messages)
 
 
     @commands.guild_only()
