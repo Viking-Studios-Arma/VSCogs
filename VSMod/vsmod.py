@@ -6,6 +6,8 @@ import os
 import datetime
 import logging
 import traceback
+import requests
+import asyncio
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
@@ -34,9 +36,16 @@ class VSMod(commands.Cog):
             'warnings': {},
             'default_mute_duration': 5,
             'enable_debug': False,  # Added enable_debug option
-            'suggestion_channel_id': None 
+            'suggestion_channel_id': None,
+            'status_channel_id': None,
+            'last_status': None
         }
         self.config.register_guild(**default_guild)
+        self.status_task = self.bot.loop.create_task(self.check_status())
+
+    def cog_unload(self):
+        if self.status_task:
+            self.status_task.cancel()
 
     async def cog_before_invoke(self, ctx):
         if not await self.get_muted_role(ctx.guild):
@@ -62,10 +71,8 @@ class VSMod(commands.Cog):
     async def debug_log(self, guild, command, message):
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/{guild.id}-debug.log"
-        debug_file = open(debug_file_path, 'a') 
-
-        debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
-        debug_file.close()
+        with open(debug_file_path, 'a') as debug_file:
+            debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
@@ -456,76 +463,76 @@ class VSMod(commands.Cog):
                 print("Detected invite link in message:", message.content)  # Debug print
                 actions = await self.config.guild(message.guild).actions()
                 thresholds = await self.config.guild(message.guild).thresholds()
-    
+
                 if actions['warning']:
                     warnings = await self.config.guild(message.guild).warnings()
                     user_warnings = warnings.get(str(message.author.id), [])
                     user_warnings.append("Sent an invite link")
                     warnings[str(message.author.id)] = user_warnings
                     await self.config.guild(message.guild).warnings.set(warnings)
-    
+
                     warning_threshold = thresholds['warning_threshold']
-    
+
                     if len(user_warnings) >= warning_threshold:
                         await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
                         await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
                         await message.author.send('Reason: Sent an invite link')
-    
+
                 if actions['banning']:
                     warnings = await self.config.guild(message.guild).warnings()
                     user_warnings = warnings.get(str(message.author.id), [])
                     user_warnings.append("Sent an invite link")
                     warnings[str(message.author.id)] = user_warnings
                     await self.config.guild(message.guild).warnings.set(warnings)
-    
+
                     banning_threshold = thresholds['banning_threshold']
-    
+
                     if len(user_warnings) >= banning_threshold:
                         await message.author.ban(reason='Sent an invite link.')
                         await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
                         await message.author.send('Reason: Sent an invite link.')
-    
+
                 if actions['muting']:
                     muted_role = await self.get_muted_role(message.guild)
                     if muted_role is None:
                         await self.create_muted_role(message.guild)
                         muted_role = await self.get_muted_role(message.guild)
-    
+
                     if muted_role is None:
                         await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
                         return
-    
+
                     warnings = await self.config.guild(message.guild).warnings()
                     user_warnings = warnings.get(str(message.author.id), [])
                     user_warnings.append("Sent an invite link")
                     warnings[str(message.author.id)] = user_warnings
                     await self.config.guild(message.guild).warnings.set(warnings)
-    
+
                     muting_threshold = thresholds['muting_threshold']
-    
+
                     if len(user_warnings) >= muting_threshold:
                         await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
                         await message.author.send('Reason: Sent an invite link.')
                         await message.author.add_roles(muted_role)
-    
+
                         muting_time = thresholds['muting_time']
-    
+
                         await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
                         await message.author.remove_roles(muted_role)
                         await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
-    
+
                     try:
                         await message.delete()
                         print(f"Deleted message from {message.author} containing an invite link")  # Debug print
                     except discord.Forbidden:
                         print("Bot doesn't have permission to delete messages.")  # Debug print
-            
+
                     try:
                         await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
                         print("Sent DM to the user")  # Debug print
                     except discord.Forbidden:
                         print("Bot can't send DMs to the user.")  # Debug print
-            
+
                     try:
                         await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
                         print("Sent message to the channel")  # Debug print
@@ -661,7 +668,7 @@ class VSMod(commands.Cog):
         await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
 
         await ctx.send(f'{user.mention} has been banned for: {reason}')
-    
+
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(manage_roles=True)
@@ -669,18 +676,18 @@ class VSMod(commands.Cog):
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, "add", f"Running 'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
             return
-    
+
         # Check if muted role exists, create one if not
         muted_role = await self.get_muted_role(ctx.guild)
         if muted_role is None:
             await self.create_muted_role(ctx.guild)
             muted_role = await self.get_muted_role(ctx.guild)
-    
+
         # If after creating it's still None, something went wrong, notify the user
         if muted_role is None:
             await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
             return
-    
+
         if muted_role and muted_role in user.roles:
             await user.remove_roles(muted_role)
             await ctx.send(f'{user.mention} has been unmuted.')
@@ -823,26 +830,26 @@ class VSMod(commands.Cog):
             await self.debug_log(ctx.guild, "add", "Running 'suggest' command")
             return
         suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
-    
+
         if suggestion_channel_id is None:
             await ctx.send('Please ask the server owner to set the suggestion channel first.')
             return
-    
+
         suggestion_channel = self.bot.get_channel(suggestion_channel_id)
-    
+
         if suggestion_channel is not None:
             embed = discord.Embed(
                 title="New Suggestion",
                 description=suggestion,
                 color=discord.Color.blue()
             )
-    
+
             embed.set_footer(text=f"Suggested by {ctx.author.display_name}", icon_url=ctx.author.avatar.url)
-    
+
             message = await suggestion_channel.send(embed=embed)
             await message.add_reaction("👍")
             await message.add_reaction("👎")
-    
+
             await ctx.message.delete()
             await ctx.send('Your suggestion has been submitted!')
         else:
@@ -914,7 +921,7 @@ class VSMod(commands.Cog):
             await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
         else:
             await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
-    
+
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
@@ -942,7 +949,7 @@ class VSMod(commands.Cog):
 
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
-    
+
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
@@ -975,3 +982,62 @@ class VSMod(commands.Cog):
                 await ctx.send(f"Debug Log Contents for {ctx.guild.name}:\n```{log_contents}```")
         except FileNotFoundError:
             await ctx.send("debug.log file not found.")
+
+    async def check_status(self):
+        try:
+            while True:
+                try:
+                    response = requests.get("https://discordstatus.com/api/v2/status.json")
+                    response.raise_for_status()
+                    data = response.json()
+                except requests.exceptions.RequestException as e:
+                    print(f"Error fetching Discord status: {e}")
+                    await asyncio.sleep(300)
+                    continue
+
+                current_status = data['status']['description']
+                components = data['components']
+
+                for guild in self.bot.guilds:
+                    status_channel_id = await self.config.guild(guild).status_channel_id()
+                    if not status_channel_id:
+                        continue
+
+                    last_status = await self.config.guild(guild).last_status()
+
+                    if current_status != last_status:
+                        status_message = self.format_status_message(current_status, components)
+                        await self.post_update(guild, status_message)
+                        await self.config.guild(guild).last_status.set(current_status)
+
+                await asyncio.sleep(300)
+        except asyncio.CancelledError:
+            print("Status checking task was cancelled.")
+
+    def format_status_message(self, status, components):
+        message = f"**Discord Status Update**\n\n"
+        message += f"**Status**: {status}\n\n"
+        for component in components:
+            if component['status'] != "operational":
+                message += f"**{component['name']}**: {component['status']}\n"
+        return message
+
+    async def post_update(self, guild, message):
+        channel_id = await self.config.guild(guild).status_channel_id()
+        if channel := self.bot.get_channel(channel_id):
+            await channel.send(message)
+
+    @commands.guild_only()
+    @commands.admin_or_permissions(manage_guild=True)
+    @commands.group(name="settings", invoke_without_command=True)
+    async def _settings(self, ctx):
+        await ctx.send("Available settings: mod, discord-status, suggestion")
+
+    @_settings.group(name="discord-status", invoke_without_command=True)
+    async def _discord_status(self, ctx):
+        await ctx.send("Available discord-status commands: setstatuschannel")
+
+    @_discord_status.command(name="setstatuschannel")
+    async def set_status_channel(self, ctx, channel: discord.TextChannel):
+        await self.config.guild(ctx.guild).status_channel_id.set(channel.id)
+        await ctx.send(f"Discord status updates will be sent to {channel.mention}")
