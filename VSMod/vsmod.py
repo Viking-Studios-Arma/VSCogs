@@ -1,15 +1,21 @@
+import contextlib
 import discord
-from redbot.core import commands, Config, checks
+from redbot.core import commands, Config, checks, tasks
 import redbot.core.data_manager
 import random
 import os
 import datetime
 import logging
 import traceback
+import requests
+import asyncio
+from discord_slash import SlashCommand, SlashContext
+from discord_slash.utils.manage_commands import create_option, create_choice
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.slash = SlashCommand(bot, sync_commands=True)
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/debug.log"
         self.debug_file = None
@@ -34,9 +40,15 @@ class VSMod(commands.Cog):
             'warnings': {},
             'default_mute_duration': 5,
             'enable_debug': False,  # Added enable_debug option
-            'suggestion_channel_id': None 
+            'suggestion_channel_id': None,
+            'status_channel_id': None,
+            'last_status': None
         }
         self.config.register_guild(**default_guild)
+        self.check_status.start()
+
+    def cog_unload(self):
+        self.check_status.cancel()
 
     async def cog_before_invoke(self, ctx):
         if not await self.get_muted_role(ctx.guild):
@@ -62,13 +74,13 @@ class VSMod(commands.Cog):
     async def debug_log(self, guild, command, message):
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/{guild.id}-debug.log"
-        debug_file = open(debug_file_path, 'a') 
-
-        debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
-        debug_file.close()
+        with open(debug_file_path, 'a') as debug_file:
+            debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, ctx.command.name, f"Error: {str(error)}")
         if isinstance(error, commands.CommandNotFound):
             await ctx.send("Sorry, I couldn't find that command. Use `!help` for a list of available commands.")
         if ctx.command.name == 'add':
@@ -141,8 +153,6 @@ class VSMod(commands.Cog):
         elif isinstance(error, commands.CommandInvokeError):
             original_error = getattr(error, "original", error)
             await ctx.send(f"An error occurred while processing the command: {original_error}")
-        elif isinstance(error, commands.UserInputError):
-            await ctx.send(f"Invalid input. Please check the command usage with `!help {ctx.command}`.")
         elif isinstance(error, commands.CommandError):
             await ctx.send(f"An error occurred while processing the command: {error}")
         else:
@@ -370,7 +380,7 @@ class VSMod(commands.Cog):
             return
         #Add debug print statement
         if await self.config.guild(message.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running 'on_message' listener")
+            await self.debug_log(message.guild, "on_message", "Running 'on_message' listener")
             return
 
         content = message.content.lower()
@@ -451,117 +461,143 @@ class VSMod(commands.Cog):
                 await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
 
         # Invite Link Filter
-        if await self.config.guild(message.guild).actions.invite_link_filter():
-            if await self.contains_invite_link(message.content):
-                print("Detected invite link in message:", message.content)  # Debug print
-                actions = await self.config.guild(message.guild).actions()
-                thresholds = await self.config.guild(message.guild).thresholds()
-    
-                if actions['warning']:
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
-    
-                    warning_threshold = thresholds['warning_threshold']
-    
-                    if len(user_warnings) >= warning_threshold:
-                        await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
-                        await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
-                        await message.author.send('Reason: Sent an invite link')
-    
-                if actions['banning']:
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
-    
-                    banning_threshold = thresholds['banning_threshold']
-    
-                    if len(user_warnings) >= banning_threshold:
-                        await message.author.ban(reason='Sent an invite link.')
-                        await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
-                        await message.author.send('Reason: Sent an invite link.')
-    
-                if actions['muting']:
+        if await self.config.guild(message.guild).actions.invite_link_filter() and await self.contains_invite_link(message.content):
+            print("Detected invite link in message:", message.content)  # Debug print
+            actions = await self.config.guild(message.guild).actions()
+            thresholds = await self.config.guild(message.guild).thresholds()
+
+            if actions['warning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+
+                warning_threshold = thresholds['warning_threshold']
+
+                if len(user_warnings) >= warning_threshold:
+                    await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
+                    await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
+                    await message.author.send('Reason: Sent an invite link')
+
+            if actions['banning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+
+                banning_threshold = thresholds['banning_threshold']
+
+                if len(user_warnings) >= banning_threshold:
+                    await message.author.ban(reason='Sent an invite link.')
+                    await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
+                    await message.author.send('Reason: Sent an invite link.')
+
+            if actions['muting']:
+                muted_role = await self.get_muted_role(message.guild)
+                if muted_role is None:
+                    await self.create_muted_role(message.guild)
                     muted_role = await self.get_muted_role(message.guild)
-                    if muted_role is None:
-                        await self.create_muted_role(message.guild)
-                        muted_role = await self.get_muted_role(message.guild)
-    
-                    if muted_role is None:
-                        await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
-                        return
-    
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
-    
-                    muting_threshold = thresholds['muting_threshold']
-    
-                    if len(user_warnings) >= muting_threshold:
-                        await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
-                        await message.author.send('Reason: Sent an invite link.')
-                        await message.author.add_roles(muted_role)
-    
-                        muting_time = thresholds['muting_time']
-    
-                        await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
-                        await message.author.remove_roles(muted_role)
-                        await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
-    
-                    try:
-                        await message.delete()
-                        print(f"Deleted message from {message.author} containing an invite link")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot doesn't have permission to delete messages.")  # Debug print
-            
-                    try:
-                        await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
-                        print("Sent DM to the user")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot can't send DMs to the user.")  # Debug print
-            
-                    try:
-                        await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
-                        print("Sent message to the channel")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot can't send messages to the channel.")  # Debug print
 
+                if muted_role is None:
+                    await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
+                    return
 
-    @commands.command()
-    @commands.guild_only()
-    @checks.mod_or_permissions(ban_members=True)
-    async def warn(self, ctx, user: discord.Member, *, reason: str):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'warn' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
-            return
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
+
+                muting_threshold = thresholds['muting_threshold']
+
+                if len(user_warnings) >= muting_threshold:
+                    await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
+                    await message.author.send('Reason: Sent an invite link.')
+                    await message.author.add_roles(muted_role)
+
+                    muting_time = thresholds['muting_time']
+
+                    await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
+                    await message.author.remove_roles(muted_role)
+                    await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
+
+                try:
+                    await message.delete()
+                    print(f"Deleted message from {message.author} containing an invite link")  # Debug print
+                except discord.Forbidden:
+                    print("Bot doesn't have permission to delete messages.")  # Debug print
+
+                try:
+                    await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
+                    print("Sent DM to the user")  # Debug print
+                except discord.Forbidden:
+                    print("Bot can't send DMs to the user.")  # Debug print
+
+                try:
+                    await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
+                    print("Sent message to the channel")  # Debug print
+                except discord.Forbidden:
+                    print("Bot can't send messages to the channel.")
+                    print("Bot can't send messages to the channel.")
+
+    async def handle_warn(self, ctx, user: discord.Member, reason: str):
         warnings = await self.config.guild(ctx.guild).warnings()
         user_warnings = warnings.get(str(user.id), [])
         user_warnings.append(reason)
         warnings[str(user.id)] = user_warnings
         await self.config.guild(ctx.guild).warnings.set(warnings)
 
-        # Send a DM to the user
-        await user.send(f'You have received a warning in the server {ctx.guild.name}.')
-        await user.send(f'Reason: {reason}')
-
-        # Log the action
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
-        mod_actions.append({
-            'moderator': ctx.author.id,
-            'action': 'warn',
-            'user': user.id,
-            'reason': reason
-        })
-        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
-
+        await user.send(f'You have received a warning in the server {ctx.guild.name}. Reason: {reason}')
         await ctx.send(f'{user.mention} has been warned for: {reason}')
 
+    @commands.command(name="warn")
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    async def warn_command(self, ctx, user: discord.Member, *, reason: str):
+        await self.handle_warn(ctx, user, reason)
+
+    @slash.slash(
+        name="warn",
+        description="Warn a member for a specified reason",
+        options=[
+            create_option(
+                name="user",
+                description="The member to warn",
+                option_type=6,  # User type
+                required=True
+            ),
+            create_option(
+                name="reason",
+                description="The reason for warning the user",
+                option_type=3,  # String type
+                required=True
+            ),
+        ],
+    )
+    async def warn_slash(self, ctx: SlashContext, user: discord.Member, reason: str):
+        await self.handle_warn(ctx, user, reason)
+
+
+    @slash.slash(
+        name="kick",
+        description="Kick a member for a specified reason",
+        options=[
+            create_option(
+                name="user",
+                description="The member to kick",
+                option_type=6,  # User type
+                required=True
+            ),
+            create_option(
+                name="reason",
+                description="The reason for kicking the user",
+                option_type=3,  # String type
+                required=True
+            ),
+        ],
+    )
     @commands.command()
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
@@ -587,41 +623,29 @@ class VSMod(commands.Cog):
 
         await ctx.send(f'{user.mention} has been kicked for: {reason}')
 
-    @commands.command()
-    @commands.guild_only()
-    @checks.mod_or_permissions(manage_roles=True)
-    async def mute(self, ctx, user: discord.Member, time: int = None, *, reason: str):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", f"Running 'mute' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
-            return
-
-        # Check if muted role exists, create one if not
+    async def handle_mute(self, ctx, user: discord.Member, time: int, reason: str):
         muted_role = await self.get_muted_role(ctx.guild)
         if muted_role is None:
             await self.create_muted_role(ctx.guild)
             muted_role = await self.get_muted_role(ctx.guild)
 
-        # If after creating it's still None, something went wrong, notify the user
         if muted_role is None:
             await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
             return
 
         if time is not None:
-            # Set muting actions, thresholds, and time
             await self.config.guild(ctx.guild).actions.muting.set(True)
-            await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Change as needed
+            await self.config.guild(ctx.guild).thresholds.muting_threshold.set(1)  # Adjust as needed
             await self.config.guild(ctx.guild).thresholds.muting_time.set(time)
 
         await user.add_roles(muted_role)
 
-        # Send a DM to the user
         if time is not None:
             await user.send(f'You have been muted in the server {ctx.guild.name} for {time} minutes.')
         else:
             await user.send(f'You have been muted indefinitely in the server {ctx.guild.name}.')
         await user.send(f'Reason: {reason}')
 
-        # Log the action
         mod_actions = await self.config.guild(ctx.guild).mod_actions()
         mod_actions.append({
             'moderator': ctx.author.id,
@@ -631,71 +655,140 @@ class VSMod(commands.Cog):
         })
         await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
 
-        # Mention the user and notify the channel
         if time is not None:
             await ctx.send(f'{user.mention} has been muted for {time} minutes for: {reason}')
         else:
             await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
 
-    @commands.command()
+    @commands.command(name="mute")
     @commands.guild_only()
-    @checks.mod_or_permissions(ban_members=True)
-    async def ban(self, ctx, user: discord.Member, *, reason: str):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'ban' command with user {user.name}#{user.discriminator} ({user.id}) and reason: {reason}")
-            return
+    @commands.has_permissions(manage_roles=True)
+    async def mute_command(self, ctx, user: discord.Member, time: int = None, *, reason: str):
+        await self.handle_mute(ctx, user, time, reason)
+
+    @slash.slash(
+        name="mute",
+        description="Mute a member for a specified time and reason",
+        options=[
+            create_option(
+                name="user",
+                description="The member to mute",
+                option_type=6,  # User type
+                required=True
+            ),
+            create_option(
+                name="time",
+                description="Duration to mute the user (in minutes, optional)",
+                option_type=4,  # Integer
+                required=False
+            ),
+            create_option(
+                name="reason",
+                description="The reason for muting the user",
+                option_type=3,  # String type
+                required=True
+            ),
+        ],
+    )
+    async def mute_slash(self, ctx: SlashContext, user: discord.Member, time: int = None, reason: str):
+        await self.handle_mute(ctx, user, time, reason)
+
+
+    async def handle_ban(self, ctx, user: discord.Member, reason: str):
         await user.ban(reason=reason)
-
-        # Send a DM to the user
-        await user.send(f'You have been banned from the server {ctx.guild.name}.')
-        await user.send(f'Reason: {reason}')
-
-        # Log the action
-        mod_actions = await self.config.guild(ctx.guild).mod_actions()
-        mod_actions.append({
-            'moderator': ctx.author.id,
-            'action': 'ban',
-            'user': user.id,
-            'reason': reason
-        })
-        await self.config.guild(ctx.guild).mod_actions.set(mod_actions)
-
+        await user.send(f'You have been banned from the server {ctx.guild.name}. Reason: {reason}')
         await ctx.send(f'{user.mention} has been banned for: {reason}')
-    
-    @commands.command()
+
+    @commands.command(name="ban")
     @commands.guild_only()
-    @checks.mod_or_permissions(manage_roles=True)
-    async def unmute(self, ctx, user: discord.Member):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", f"Running 'unmute' command with user {user.name}#{user.discriminator} ({user.id})")
-            return
-    
-        # Check if muted role exists, create one if not
+    @commands.has_permissions(ban_members=True)
+    async def ban_command(self, ctx, user: discord.Member, *, reason: str):
+        await self.handle_ban(ctx, user, reason)
+
+    @slash.slash(
+        name="ban",
+        description="Ban a member for a specified reason",
+        options=[
+            create_option(
+                name="user",
+                description="The member to ban",
+                option_type=6,  # User type
+                required=True
+            ),
+            create_option(
+                name="reason",
+                description="The reason for banning the user",
+                option_type=3,  # String type
+                required=True
+            ),
+        ],
+    )
+    async def ban_slash(self, ctx: SlashContext, user: discord.Member, reason: str):
+        await self.handle_ban(ctx, user, reason)
+
+    async def handle_unmute(self, ctx, user: discord.Member):
         muted_role = await self.get_muted_role(ctx.guild)
         if muted_role is None:
             await self.create_muted_role(ctx.guild)
             muted_role = await self.get_muted_role(ctx.guild)
-    
-        # If after creating it's still None, something went wrong, notify the user
+
         if muted_role is None:
             await ctx.send("Error creating muted role. Please check the bot's permissions and try again.")
             return
-    
+
         if muted_role and muted_role in user.roles:
             await user.remove_roles(muted_role)
             await ctx.send(f'{user.mention} has been unmuted.')
         else:
             await ctx.send(f'{user.mention} is not muted.')
 
-    @commands.command()
+    @commands.command(name="unmute")
     @commands.guild_only()
-    @checks.mod_or_permissions(ban_members=True)
-    async def unban(self, ctx, user: discord.User):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", "Running  'unban' command with user {user.name}#{user.discriminator} ({user.id})")
-            return
+    @commands.has_permissions(manage_roles=True)
+    async def unmute_command(self, ctx, user: discord.Member):
+        await self.handle_unmute(ctx, user)
+
+    @slash.slash(
+        name="unmute",
+        description="Unmute a member",
+        options=[
+            create_option(
+                name="user",
+                description="The member to unmute",
+                option_type=6,  # User type
+                required=True
+            ),
+        ],
+    )
+    async def unmute_slash(self, ctx: SlashContext, user: discord.Member):
+        await self.handle_unmute(ctx, user)
+
+
+    async def handle_unban(self, ctx, user: discord.User):
         await ctx.guild.unban(user)
         await ctx.send(f'{user.mention} has been unbanned.')
+
+    @commands.command(name="unban")
+    @commands.guild_only()
+    @commands.has_permissions(ban_members=True)
+    async def unban_command(self, ctx, user: discord.User):
+        await self.handle_unban(ctx, user)
+
+    @slash.slash(
+        name="unban",
+        description="Unban a member",
+        options=[
+            create_option(
+                name="user",
+                description="The user to unban",
+                option_type=3,  # String type (Discord User ID or mention)
+                required=True
+            ),
+        ],
+    )
+    async def unban_slash(self, ctx: SlashContext, user: discord.User):
+        await self.handle_unban(ctx, user)
+
 
     @commands.command()
     @commands.guild_only()
@@ -800,10 +893,8 @@ class VSMod(commands.Cog):
                                     current_page = min(current_page, len(user_warnings))
                                     await message.edit(embed=warnings_embeds[current_page])
                                 else:
-                                    try:
+                                    with contextlib.suppress(discord.NotFound):
                                         await message.delete()
-                                    except discord.NotFound:
-                                        pass
                                     break
                             else:
                                 await ctx.send("Invalid page index.")
@@ -823,26 +914,26 @@ class VSMod(commands.Cog):
             await self.debug_log(ctx.guild, "add", "Running 'suggest' command")
             return
         suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
-    
+
         if suggestion_channel_id is None:
             await ctx.send('Please ask the server owner to set the suggestion channel first.')
             return
-    
+
         suggestion_channel = self.bot.get_channel(suggestion_channel_id)
-    
+
         if suggestion_channel is not None:
             embed = discord.Embed(
                 title="New Suggestion",
                 description=suggestion,
                 color=discord.Color.blue()
             )
-    
+
             embed.set_footer(text=f"Suggested by {ctx.author.display_name}", icon_url=ctx.author.avatar.url)
-    
+
             message = await suggestion_channel.send(embed=embed)
             await message.add_reaction("👍")
             await message.add_reaction("👎")
-    
+
             await ctx.message.delete()
             await ctx.send('Your suggestion has been submitted!')
         else:
@@ -899,22 +990,36 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
-    @commands.command()
-    @commands.guild_only()
-    @commands.has_permissions(manage_messages=True)
-    async def clean(self, ctx, num_messages: int):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", f"Running 'clean' command to delete {num_messages} messages")
-            return
 
-        # Ensure the number of messages to delete is within a reasonable range
+    async def handle_clean(self, ctx, num_messages: int):
         if 1 <= num_messages <= 100:
-            # Delete the specified number of messages
-            deleted_messages = await ctx.channel.purge(limit=num_messages+1)
+            deleted_messages = await ctx.channel.purge(limit=num_messages + 1)
             await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
         else:
             await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
-    
+
+    @commands.command(name="clean", aliases=["purge"])
+    @commands.guild_only()
+    @commands.has_permissions(manage_messages=True)
+    async def clean_command(self, ctx, num_messages: int):
+        await self.handle_clean(ctx, num_messages)
+
+    @slash.slash(
+        name="clean",
+        description="Clean a specified number of messages from the channel",
+        options=[
+            create_option(
+                name="num_messages",
+                description="Number of messages to delete (1-100)",
+                option_type=4,  # Integer
+                required=True
+            )
+        ],
+    )
+    async def clean_slash(self, ctx: SlashContext, num_messages: int):
+        await self.handle_clean(ctx, num_messages)
+
+
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
@@ -942,7 +1047,7 @@ class VSMod(commands.Cog):
 
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
-    
+
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
     @commands.has_permissions(manage_guild=True)
@@ -975,3 +1080,59 @@ class VSMod(commands.Cog):
                 await ctx.send(f"Debug Log Contents for {ctx.guild.name}:\n```{log_contents}```")
         except FileNotFoundError:
             await ctx.send("debug.log file not found.")
+
+    @tasks.loop(minutes=5.0)
+    async def check_status(self):
+        """Background task to check Discord's status every 5 minutes."""
+        try:
+            response = requests.get("https://discordstatus.com/api/v2/status.json")
+            response.raise_for_status()  # Raises HTTPError for bad responses
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching Discord status: {e}")
+            return  # Exit early if there's an issue
+
+        current_status = data['status']['description']
+        components = data['components']
+
+        for guild in self.bot.guilds:
+            status_channel_id = await self.config.guild(guild).status_channel_id()
+            if not status_channel_id:
+                continue
+
+            last_status = await self.config.guild(guild).last_status()
+
+            if current_status != last_status:
+                status_message = self.format_status_message(current_status, components)
+                await self.post_update(guild, status_message)
+                await self.config.guild(guild).last_status.set(current_status)
+
+
+    def format_status_message(self, status, components):
+        message = f"**Discord Status Update**\n\n"
+        message += f"**Status**: {status}\n\n"
+        for component in components:
+            if component['status'] != "operational":
+                message += f"**{component['name']}**: {component['status']}\n"
+        return message
+
+    async def post_update(self, guild, message):
+        channel_id = await self.config.guild(guild).status_channel_id()
+        if channel := self.bot.get_channel(channel_id):
+            await channel.send(message)
+
+    @commands.guild_only()
+    @commands.admin_or_permissions(manage_guild=True)
+    @commands.group(name="settings", invoke_without_command=True)
+    async def _settings(self, ctx):
+        await ctx.send("Available settings: mod, discord-status, suggestion")
+
+    @_settings.group(name="discord-status", invoke_without_command=True)
+    async def _discord_status(self, ctx):
+        await ctx.send("Available discord-status commands: setstatuschannel")
+
+    @_discord_status.command(name="setstatuschannel")
+    async def set_status_channel(self, ctx, channel: discord.TextChannel):
+        """Set the channel for Discord status updates."""
+        await self.config.guild(ctx.guild).status_channel_id.set(channel.id)
+        await ctx.send(f"Discord status updates will be sent to {channel.mention}")
