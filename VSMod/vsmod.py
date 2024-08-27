@@ -36,7 +36,9 @@ class VSMod(commands.Cog):
             'warnings': {},
             'default_mute_duration': 5,
             'enable_debug': False,  # Added enable_debug option
-            'suggestion_channel_id': None
+            'suggestion_channel_id': None,
+            'status_channel_id': None,
+            'last_status': None
         }
         self.config.register_guild(**default_guild)
         self.status_task = self.bot.loop.create_task(self.check_status())
@@ -69,10 +71,8 @@ class VSMod(commands.Cog):
     async def debug_log(self, guild, command, message):
         current_directory = redbot.core.data_manager.cog_data_path(cog_instance=self)
         debug_file_path = f"{current_directory}/{guild.id}-debug.log"
-        debug_file = open(debug_file_path, 'a')
-
-        debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
-        debug_file.close()
+        with open(debug_file_path, 'a') as debug_file:
+            debug_file.write(f"{datetime.datetime.now()} - Command '{command}': {message}\n")
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
