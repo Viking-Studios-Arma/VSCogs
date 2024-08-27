@@ -1,7 +1,7 @@
 import contextlib
-import discord
-from redbot.core import commands, Config, checks, tasks
-import redbot.core.data_manager
+import discord # type: ignore
+from redbot.core import commands, Config, checks, tasks # type: ignore
+import redbot.core.data_manager # type: ignore
 import random
 import os
 import datetime
@@ -9,8 +9,8 @@ import logging
 import traceback
 import requests
 import asyncio
-from discord_slash import SlashCommand, SlashContext
-from discord_slash.utils.manage_commands import create_option, create_choice
+from discord_slash import SlashCommand, SlashContext # type: ignore
+from discord_slash.utils.manage_commands import create_option, create_choice # type: ignore
 
 class VSMod(commands.Cog):
     def __init__(self, bot):
@@ -79,6 +79,7 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
+        # sourcery skip: low-code-quality
         if await self.config.guild(ctx.guild).enable_debug():
             await self.debug_log(ctx.guild, ctx.command.name, f"Error: {str(error)}")
         if isinstance(error, commands.CommandNotFound):
@@ -374,7 +375,7 @@ class VSMod(commands.Cog):
     async def contains_invite_link(self, input_string):
         return "discord.gg" in input_string
 
-    @commands.Cog.listener()
+    @commands.Cog.listener()  # sourcery skip: low-code-quality
     async def on_message(self, message):
         if message.guild is None or message.author.bot:
             return
@@ -558,7 +559,7 @@ class VSMod(commands.Cog):
     async def warn_command(self, ctx, user: discord.Member, *, reason: str):
         await self.handle_warn(ctx, user, reason)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="warn",
         description="Warn a member for a specified reason",
         options=[
@@ -580,7 +581,7 @@ class VSMod(commands.Cog):
         await self.handle_warn(ctx, user, reason)
 
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="kick",
         description="Kick a member for a specified reason",
         options=[
@@ -666,7 +667,7 @@ class VSMod(commands.Cog):
     async def mute_command(self, ctx, user: discord.Member, time: int = None, *, reason: str):
         await self.handle_mute(ctx, user, time, reason)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="mute",
         description="Mute a member for a specified time and reason",
         options=[
@@ -677,21 +678,22 @@ class VSMod(commands.Cog):
                 required=True
             ),
             create_option(
-                name="time",
-                description="Duration to mute the user (in minutes, optional)",
-                option_type=4,  # Integer
-                required=False
-            ),
-            create_option(
                 name="reason",
                 description="The reason for muting the user",
                 option_type=3,  # String type
                 required=True
             ),
+            create_option(
+                name="time",
+                description="Duration to mute the user (in minutes, optional)",
+                option_type=4,  # Integer
+                required=False
+            ),
         ],
     )
-    async def mute_slash(self, ctx: SlashContext, user: discord.Member, time: int = None, reason: str):
+    async def mute_slash(self, ctx: SlashContext, user: discord.Member, reason: str, time: int = None):
         await self.handle_mute(ctx, user, time, reason)
+
 
 
     async def handle_ban(self, ctx, user: discord.Member, reason: str):
@@ -705,7 +707,7 @@ class VSMod(commands.Cog):
     async def ban_command(self, ctx, user: discord.Member, *, reason: str):
         await self.handle_ban(ctx, user, reason)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="ban",
         description="Ban a member for a specified reason",
         options=[
@@ -748,7 +750,7 @@ class VSMod(commands.Cog):
     async def unmute_command(self, ctx, user: discord.Member):
         await self.handle_unmute(ctx, user)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="unmute",
         description="Unmute a member",
         options=[
@@ -774,7 +776,7 @@ class VSMod(commands.Cog):
     async def unban_command(self, ctx, user: discord.User):
         await self.handle_unban(ctx, user)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="unban",
         description="Unban a member",
         options=[
@@ -1004,7 +1006,7 @@ class VSMod(commands.Cog):
     async def clean_command(self, ctx, num_messages: int):
         await self.handle_clean(ctx, num_messages)
 
-    @slash.slash(
+    @slash.slash( # type: ignore
         name="clean",
         description="Clean a specified number of messages from the channel",
         options=[
