@@ -1,6 +1,6 @@
 import contextlib
 import discord # type: ignore
-from redbot.core import commands, Config, checks, tasks # type: ignore
+from redbot.core import commands, Config, checks # type: ignore
 import redbot.core.data_manager # type: ignore
 import random
 import os
@@ -43,10 +43,11 @@ class VSMod(commands.Cog):
             'last_status': None
         }
         self.config.register_guild(**default_guild)
-        self.check_status.start()
+        self.status_task = self.bot.loop.create_task(self.check_status())
 
     def cog_unload(self):
-        self.check_status.cancel()
+        if self.status_task:
+            self.status_task.cancel()
 
     async def cog_before_invoke(self, ctx):
         if not await self.get_muted_role(ctx.guild):
@@ -1009,32 +1010,37 @@ class VSMod(commands.Cog):
         except FileNotFoundError:
             await ctx.send("debug.log file not found.")
 
-    @tasks.loop(minutes=5.0)
     async def check_status(self):
         """Background task to check Discord's status every 5 minutes."""
         try:
-            response = requests.get("https://discordstatus.com/api/v2/status.json")
-            response.raise_for_status()  # Raises HTTPError for bad responses
-            data = response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching Discord status: {e}")
-            return  # Exit early if there's an issue
+            while True:
+                try:
+                    response = requests.get("https://discordstatus.com/api/v2/status.json")
+                    response.raise_for_status()  # Raises HTTPError for bad responses
+                    data = response.json()
+                except requests.exceptions.RequestException as e:
+                    print(f"Error fetching Discord status: {e}")
+                    await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                    continue  # Skip the rest of the loop and try again
 
-        current_status = data['status']['description']
-        components = data['components']
+                current_status = data['status']['description']
+                components = data['components']
 
-        for guild in self.bot.guilds:
-            status_channel_id = await self.config.guild(guild).status_channel_id()
-            if not status_channel_id:
-                continue
+                for guild in self.bot.guilds:
+                    status_channel_id = await self.config.guild(guild).status_channel_id()
+                    if not status_channel_id:
+                        continue
 
-            last_status = await self.config.guild(guild).last_status()
+                    last_status = await self.config.guild(guild).last_status()
 
-            if current_status != last_status:
-                status_message = self.format_status_message(current_status, components)
-                await self.post_update(guild, status_message)
-                await self.config.guild(guild).last_status.set(current_status)
+                    if current_status != last_status:
+                        status_message = self.format_status_message(current_status, components)
+                        await self.post_update(guild, status_message)
+                        await self.config.guild(guild).last_status.set(current_status)
 
+                await asyncio.sleep(300)  # Wait 5 minutes before checking again
+        except asyncio.CancelledError:
+            print("Status checking task was cancelled.")
 
     def format_status_message(self, status, components):
         message = f"**Discord Status Update**\n\n"
