@@ -1,6 +1,6 @@
 import contextlib
 import discord
-from discord import app_commands
+from discord import app_commands, Message
 from redbot.core import commands, Config, checks
 import redbot.core.data_manager
 import random
@@ -906,21 +906,62 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
-    @commands.hybrid_command(name="clean")
+    @commands.hybrid_command(name="clean", aliases=["clear", "purge"])
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
-    async def clean(self, ctx, num_messages: int):
-        if await self.config.guild(ctx.guild).enable_debug():
-            await self.debug_log(ctx.guild, "add", f"Running 'clean' command to delete {num_messages} messages")
+    async def clean(self, ctx, *, options: str = None):
+        # Set default options
+        delete_attachments_only = False
+        stop_at_msg_id = None
+        num_messages = None
+        user_id = None
+
+        # Parse the options string
+        if options:
+            # Split the options by space and process
+            args = options.split()
+            for i, arg in enumerate(args):
+                if arg in ['-a', '--attachments']:
+                    delete_attachments_only = True
+                elif arg.startswith('-to') or arg.startswith('--to'):
+                    try:
+                        # Extract the message ID for the -to option
+                        stop_at_msg_id = int(arg.split('=')[1]) if '=' in arg else int(args[i + 1])
+                        # Hardcode the message limit to 100 if `-to` is used
+                        num_messages = 100
+                    except (ValueError, IndexError):
+                        await ctx.send("Invalid message ID provided for `-to` option.", delete_after=5)
+                        return
+                elif arg.isdigit() and not num_messages:
+                    # Set the number of messages if it's a valid number
+                    num_messages = int(arg)
+                else:
+                    # Attempt to match username or user ID
+                    user = ctx.guild.get_member_named(arg)
+                    if user:
+                        user_id = user.id
+                    elif ctx.guild.get_member(int(arg)):
+                        user_id = int(arg)
+
+        # Ensure the number of messages to delete is within a reasonable range only if num_messages is explicitly set
+        if num_messages is not None and not (1 <= num_messages <= 100):
+            await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
             return
 
-        # Ensure the number of messages to delete is within a reasonable range
-        if 1 <= num_messages <= 100:
-            # Delete the specified number of messages
-            deleted_messages = await ctx.channel.purge(limit=num_messages+1)
-            await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
-        else:
-            await ctx.send("Please provide a number between 1 and 100.", delete_after=5)
+        # Define the check function to filter messages
+        def check(msg: Message):
+            # If stop_at_msg_id is set, stop purging when reaching it
+            if stop_at_msg_id and msg.id <= stop_at_msg_id:
+                return False
+            # Check if only messages with attachments should be deleted
+            if delete_attachments_only and not msg.attachments:
+                return False
+            # Filter by user ID if set
+            return not user_id or msg.author.id == user_id
+
+        # Purge messages based on the specified limit and check criteria
+        deleted_messages = await ctx.channel.purge(limit=num_messages + 1, check=check)
+        await ctx.send(f"Deleted {len(deleted_messages)} message(s).", delete_after=5)
 
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
