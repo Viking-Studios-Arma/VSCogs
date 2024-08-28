@@ -1,4 +1,6 @@
+import contextlib
 import discord
+from discord import app_commands
 from redbot.core import commands, Config, checks
 import redbot.core.data_manager
 import random
@@ -540,7 +542,7 @@ class VSMod(commands.Cog):
                         print("Bot can't send messages to the channel.")  # Debug print
 
 
-    @commands.command()
+    @commands.hybrid_command(name="warn")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def warn(self, ctx, user: discord.Member, *, reason: str):
@@ -569,7 +571,7 @@ class VSMod(commands.Cog):
 
         await ctx.send(f'{user.mention} has been warned for: {reason}')
 
-    @commands.command()
+    @commands.hybrid_command(name="kick")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def kick(self, ctx, user: discord.Member, *, reason: str):
@@ -594,7 +596,7 @@ class VSMod(commands.Cog):
 
         await ctx.send(f'{user.mention} has been kicked for: {reason}')
 
-    @commands.command()
+    @commands.hybrid_command(name="mute")
     @commands.guild_only()
     @checks.mod_or_permissions(manage_roles=True)
     async def mute(self, ctx, user: discord.Member, time: int = None, *, reason: str):
@@ -644,7 +646,7 @@ class VSMod(commands.Cog):
         else:
             await ctx.send(f'{user.mention} has been muted indefinitely for: {reason}')
 
-    @commands.command()
+    @commands.hybrid_command(name="ban")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def ban(self, ctx, user: discord.Member, *, reason: str):
@@ -669,7 +671,7 @@ class VSMod(commands.Cog):
 
         await ctx.send(f'{user.mention} has been banned for: {reason}')
 
-    @commands.command()
+    @commands.hybrid_command(name="unmute")
     @commands.guild_only()
     @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx, user: discord.Member):
@@ -694,7 +696,7 @@ class VSMod(commands.Cog):
         else:
             await ctx.send(f'{user.mention} is not muted.')
 
-    @commands.command()
+    @commands.hybrid_command(name="unban")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def unban(self, ctx, user: discord.User):
@@ -704,7 +706,7 @@ class VSMod(commands.Cog):
         await ctx.guild.unban(user)
         await ctx.send(f'{user.mention} has been unbanned.')
 
-    @commands.command()
+    @commands.hybrid_command(name="clear_warnings")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def clear_warnings(self, ctx, user: discord.Member):
@@ -720,7 +722,7 @@ class VSMod(commands.Cog):
             await ctx.send(f'{user.mention} has no warnings.')
 
 
-    @commands.command()
+    @commands.hybrid_command(name="view_warnings")
     @commands.guild_only()
     @checks.mod_or_permissions(ban_members=True)
     async def view_warnings(self, ctx, user: discord.Member = None):
@@ -807,10 +809,8 @@ class VSMod(commands.Cog):
                                     current_page = min(current_page, len(user_warnings))
                                     await message.edit(embed=warnings_embeds[current_page])
                                 else:
-                                    try:
+                                    with contextlib.suppress(discord.NotFound):
                                         await message.delete()
-                                    except discord.NotFound:
-                                        pass
                                     break
                             else:
                                 await ctx.send("Invalid page index.")
@@ -906,7 +906,7 @@ class VSMod(commands.Cog):
         else:
             await ctx.send('You must have administrator permissions to set the suggestion channel.')
 
-    @commands.command()
+    @commands.hybrid_command(name="clean")
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
     async def clean(self, ctx, num_messages: int):
