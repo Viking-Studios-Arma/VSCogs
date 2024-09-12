@@ -40,7 +40,8 @@ class VSMod(commands.Cog):
             'enable_debug': False,  # Added enable_debug option
             'suggestion_channel_id': None,
             'status_channel_id': None,
-            'last_status': None
+            'last_status': None,
+            'exempt_roles': []
         }
         self.config.register_guild(**default_guild)
         self.status_task = self.bot.loop.create_task(self.check_status())
@@ -78,6 +79,7 @@ class VSMod(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
+        # sourcery skip: low-code-quality
         if isinstance(error, commands.CommandNotFound):
             await ctx.send("Sorry, I couldn't find that command. Use `!help` for a list of available commands.")
         if ctx.command.name == 'add':
@@ -380,7 +382,7 @@ class VSMod(commands.Cog):
         return any(re.search(pattern, input_string) for pattern in invite_patterns)
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message):  # sourcery skip: low-code-quality
         if message.guild is None or message.author.bot:
             return
         #Add debug print statement
@@ -466,87 +468,92 @@ class VSMod(commands.Cog):
                 await message.channel.send(f'{message.author.mention}, your message has been removed for containing a banned word.')
 
         # Invite Link Filter
-        if await self.config.guild(message.guild).actions.invite_link_filter():
-            if await self.contains_invite_link(message.content):
-                print("Detected invite link in message:", message.content)  # Debug print
-                actions = await self.config.guild(message.guild).actions()
-                thresholds = await self.config.guild(message.guild).thresholds()
+        if await self.config.guild(message.guild).actions.invite_link_filter() and await self.contains_invite_link(message.content):
 
-                if actions['warning']:
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
+            # Check if the user is an admin or has an exempt role
+            exempt_roles = await self.config.guild(message.guild).exempt_roles()
+            if message.author.guild_permissions.administrator or any(role.id in exempt_roles for role in message.author.roles):
+                # Allow admins or users with exempt roles to post invite links
+                return
 
-                    warning_threshold = thresholds['warning_threshold']
+            print("Detected invite link in message:", message.content)  # Debug print
+            actions = await self.config.guild(message.guild).actions()
+            thresholds = await self.config.guild(message.guild).thresholds()
 
-                    if len(user_warnings) >= warning_threshold:
-                        await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
-                        await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
-                        await message.author.send('Reason: Sent an invite link')
+            if actions['warning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
 
-                if actions['banning']:
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
+                warning_threshold = thresholds['warning_threshold']
 
-                    banning_threshold = thresholds['banning_threshold']
+                if len(user_warnings) >= warning_threshold:
+                    await message.channel.send(f'{message.author.mention}, you have reached the warning threshold and may face further actions.')
+                    await message.author.send(f'You have received a warning in the server {message.guild.name} for sending an invite link.')
+                    await message.author.send('Reason: Sent an invite link')
 
-                    if len(user_warnings) >= banning_threshold:
-                        await message.author.ban(reason='Sent an invite link.')
-                        await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
-                        await message.author.send('Reason: Sent an invite link.')
+            if actions['banning']:
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
 
-                if actions['muting']:
+                banning_threshold = thresholds['banning_threshold']
+
+                if len(user_warnings) >= banning_threshold:
+                    await message.author.ban(reason='Sent an invite link.')
+                    await message.author.send(f'You have been banned from the server {message.guild.name} for repeatedly sending invite links.')
+                    await message.author.send('Reason: Sent an invite link.')
+
+            if actions['muting']:
+                muted_role = await self.get_muted_role(message.guild)
+                if muted_role is None:
+                    await self.create_muted_role(message.guild)
                     muted_role = await self.get_muted_role(message.guild)
-                    if muted_role is None:
-                        await self.create_muted_role(message.guild)
-                        muted_role = await self.get_muted_role(message.guild)
 
-                    if muted_role is None:
-                        await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
-                        return
+                if muted_role is None:
+                    await self.debug_log(message.guild, "on_message", f"Error creating muted role for server {message.guild.name}")
+                    return
 
-                    warnings = await self.config.guild(message.guild).warnings()
-                    user_warnings = warnings.get(str(message.author.id), [])
-                    user_warnings.append("Sent an invite link")
-                    warnings[str(message.author.id)] = user_warnings
-                    await self.config.guild(message.guild).warnings.set(warnings)
+                warnings = await self.config.guild(message.guild).warnings()
+                user_warnings = warnings.get(str(message.author.id), [])
+                user_warnings.append("Sent an invite link")
+                warnings[str(message.author.id)] = user_warnings
+                await self.config.guild(message.guild).warnings.set(warnings)
 
-                    muting_threshold = thresholds['muting_threshold']
+                muting_threshold = thresholds['muting_threshold']
 
-                    if len(user_warnings) >= muting_threshold:
-                        await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
-                        await message.author.send('Reason: Sent an invite link.')
-                        await message.author.add_roles(muted_role)
+                if len(user_warnings) >= muting_threshold:
+                    await message.author.send(f'You have been muted in the server {message.guild.name} for sending an invite link.')
+                    await message.author.send('Reason: Sent an invite link.')
+                    await message.author.add_roles(muted_role)
 
-                        muting_time = thresholds['muting_time']
+                    muting_time = thresholds['muting_time']
 
-                        await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
-                        await message.author.remove_roles(muted_role)
-                        await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
+                    await asyncio.sleep(muting_time * 60)  # Sleep for muting time in seconds
+                    await message.author.remove_roles(muted_role)
+                    await message.author.send(f'You have been unmuted in the server {message.guild.name}.')
 
-                    try:
-                        await message.delete()
-                        print(f"Deleted message from {message.author} containing an invite link")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot doesn't have permission to delete messages.")  # Debug print
+                try:
+                    await message.delete()
+                    print(f"Deleted message from {message.author} containing an invite link")  # Debug print
+                except discord.Forbidden:
+                    print("Bot doesn't have permission to delete messages.")  # Debug print
 
-                    try:
-                        await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
-                        print("Sent DM to the user")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot can't send DMs to the user.")  # Debug print
+                try:
+                    await message.author.send(f"Your message has been removed from {message.guild.name} for sending an invite link.")
+                    print("Sent DM to the user")  # Debug print
+                except discord.Forbidden:
+                    print("Bot can't send DMs to the user.")  # Debug print
 
-                    try:
-                        await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
-                        print("Sent message to the channel")  # Debug print
-                    except discord.Forbidden:
-                        print("Bot can't send messages to the channel.")  # Debug print
-
+                try:
+                    await message.channel.send(f'{message.author.mention}, your message has been removed for sending an invite link.')
+                    print("Sent message to the channel")  # Debug print
+                except discord.Forbidden:
+                    print("Bot can't send messages to the channel.")
 
     @commands.hybrid_command(name="warn")
     @commands.guild_only()
@@ -996,6 +1003,53 @@ class VSMod(commands.Cog):
 
         await self.config.guild(ctx.guild).actions.invite_link_filter.set(False)
         await ctx.send('Invite link filter has been disabled.')
+
+    @_invite_filter.command(name="exempt_role")
+    async def exempt_role(self, ctx, role: discord.Role):
+        """Add a role to the exempt list for the invite filter."""
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", f"Running 'exempt_role' sub-command with role {role.name}")
+            return
+
+        exempt_roles = await self.config.guild(ctx.guild).exempt_roles()
+        if role.id not in exempt_roles:
+            exempt_roles.append(role.id)
+            await self.config.guild(ctx.guild).exempt_roles.set(exempt_roles)
+            await ctx.send(f"Role {role.name} has been added to the invite filter exempt list.")
+        else:
+            await ctx.send(f"Role {role.name} is already in the exempt list.")
+
+    @_invite_filter.command(name="remove_exempt_role")
+    async def remove_exempt_role(self, ctx, role: discord.Role):
+        """Remove a role from the exempt list for the invite filter."""
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", f"Running 'remove_exempt_role' sub-command with role {role.name}")
+            return
+
+        exempt_roles = await self.config.guild(ctx.guild).exempt_roles()
+        if role.id in exempt_roles:
+            exempt_roles.remove(role.id)
+            await self.config.guild(ctx.guild).exempt_roles.set(exempt_roles)
+            await ctx.send(f"Role {role.name} has been removed from the invite filter exempt list.")
+        else:
+            await ctx.send(f"Role {role.name} is not in the exempt list.")
+
+    @_invite_filter.command(name="list_exempt_roles")
+    async def list_exempt_roles(self, ctx):
+        """List all roles that are exempt from the invite filter."""
+        if await self.config.guild(ctx.guild).enable_debug():
+            await self.debug_log(ctx.guild, "add", "Running 'list_exempt_roles' sub-command")
+            return
+
+        exempt_roles = await self.config.guild(ctx.guild).exempt_roles()
+        if not exempt_roles:
+            await ctx.send("No roles are currently exempt from the invite filter.")
+            return
+
+        roles = [discord.utils.get(ctx.guild.roles, id=role_id) for role_id in exempt_roles]
+        role_names = [role.name for role in roles if role]
+        await ctx.send(f"Exempt Roles: {', '.join(role_names)}")
+
 
     @commands.guild_only()
     @commands.bot_has_permissions(manage_guild=True)
