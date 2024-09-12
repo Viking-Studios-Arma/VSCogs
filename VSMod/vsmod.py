@@ -371,19 +371,13 @@ class VSMod(commands.Cog):
         await ctx.send('Banning threshold has been disabled.')
 
     async def contains_invite_link(self, input_string):
-        # Regular expressions for Discord invite links
+        # Regular expressions for Discord invite links excluding event links
         invite_patterns = [
-            r'discord\.gg/([a-zA-Z0-9\-]+)(?![\?\/])',  # Matches regular invite links, excluding query params or paths
-            r'discord\.com/invite/([a-zA-Z0-9\-]+)(?![\?\/])'  # Matches the longer discord.com version, excluding query params or paths
+            r'discord\.gg/([a-zA-Z0-9\-]+)(?![\?])(?!(.*event=.*))',  # Matches regular invite links, excluding any with '?event='
+            r'discord\.com/invite/([a-zA-Z0-9\-]+)(?![\?])(?!(.*event=.*))'  # Matches the longer discord.com version, excluding any with '?event='
         ]
 
-        # Check if the input string matches any of the invite patterns
-        for pattern in invite_patterns:
-            if re.search(pattern, input_string):
-                return True
-
-        # If no pattern matches, it is not an invite link
-        return False
+        return any(re.search(pattern, input_string) for pattern in invite_patterns)
 
     @commands.Cog.listener()
     async def on_message(self, message):
